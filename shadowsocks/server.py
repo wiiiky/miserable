@@ -23,9 +23,14 @@ import os
 import logging
 import signal
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
-from shadowsocks import shell, daemon, eventloop, tcprelay, udprelay, \
-    asyncdns, manager
+
+try:
+    from shadowsocks import shell, daemon, eventloop, tcprelay, udprelay, \
+        asyncdns, manager
+except ImportError as e:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
+    from shadowsocks import shell, daemon, eventloop, tcprelay, udprelay, \
+        asyncdns, manager
 
 
 def main():
