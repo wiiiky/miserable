@@ -25,18 +25,19 @@ import signal
 
 
 try:
-    from shadowsocks import shell, daemon, eventloop, tcprelay, udprelay, asyncdns
+    from shadowsocks import shell, daemon, eventloop, \
+        tcprelay, udprelay, asyncdns
 except ImportError as e:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
-    from shadowsocks import shell, daemon, eventloop, tcprelay, udprelay, asyncdns
+    from shadowsocks import shell, daemon, eventloop, tcprelay, \
+        udprelay, asyncdns
 
 
 def main():
     shell.check_python()
 
     # fix py2exe
-    if hasattr(sys, "frozen") and sys.frozen in \
-            ("windows_exe", "console_exe"):
+    if getattr(sys, 'frozen', None) in ('windows_exe', 'console_exe'):
         p = os.path.dirname(os.path.abspath(sys.executable))
         os.chdir(p)
 
@@ -45,7 +46,7 @@ def main():
     daemon.daemon_exec(config)
 
     try:
-        logging.info("starting local at %s:%d" %
+        logging.info('starting local at %s:%d' %
                      (config['local_address'], config['local_port']))
 
         dns_resolver = asyncdns.DNSResolver()

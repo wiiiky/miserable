@@ -226,7 +226,6 @@ class EventLoop(object):
         self._impl.close()
 
 
-# from tornado
 def errno_from_exception(e):
     """Provides the errno from an Exception object.
 
@@ -236,16 +235,9 @@ def errno_from_exception(e):
     abstracts all that behavior to give you a safe way to get the
     errno.
     """
-
-    if hasattr(e, 'errno'):
-        return e.errno
-    elif e.args:
-        return e.args[0]
-    else:
-        return None
+    return getattr(e, 'errno', e.args[0] if e.args else None)
 
 
-# from tornado
 def get_sock_error(sock):
     error_number = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
     return socket.error(error_number, os.strerror(error_number))

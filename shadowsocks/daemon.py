@@ -177,7 +177,7 @@ def daemon_stop(pid_file):
 
 
 def set_user(username):
-    if username is None:
+    if not username:
         return
 
     import pwd
