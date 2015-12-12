@@ -143,6 +143,7 @@ class SelectLoop(object):
 
 
 class EventLoop(object):
+
     def __init__(self):
         if hasattr(select, 'epoll'):
             self._impl = select.epoll()

@@ -233,6 +233,7 @@ def is_valid_hostname(hostname):
 
 
 class DNSResponse(object):
+
     def __init__(self):
         self.hostname = None
         self.questions = []  # each: (addr, type, class)

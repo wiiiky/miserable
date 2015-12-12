@@ -91,6 +91,7 @@ BUF_SIZE = 32 * 1024
 
 
 class TCPRelayHandler(object):
+
     def __init__(self, server, fd_to_handlers, loop, local_sock, config,
                  dns_resolver, is_local):
         self._server = server
@@ -549,6 +550,7 @@ class TCPRelayHandler(object):
 
 
 class TCPRelay(object):
+
     def __init__(self, config, dns_resolver, is_local, stat_callback=None):
         self._config = config
         self._is_local = is_local

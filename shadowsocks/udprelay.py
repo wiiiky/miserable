@@ -81,6 +81,7 @@ def client_key(source_addr, server_af):
 
 
 class UDPRelay(object):
+
     def __init__(self, config, dns_resolver, is_local, stat_callback=None):
         self._config = config
         if is_local:
