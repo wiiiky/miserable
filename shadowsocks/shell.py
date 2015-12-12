@@ -140,107 +140,57 @@ def get_config(is_local):
     try:
         config_path = find_config()
         optlist, args = getopt.getopt(sys.argv[1:], shortopts, longopts)
-        for key, value in optlist:
-            if key == '-c':
-                config_path = value
-
-        if config_path:
-            logging.info('loading config from %s' % config_path)
-            with open(config_path, 'rb') as f:
-                try:
-                    config = parse_json_in_str(f.read().decode('utf8'))
-                except ValueError as e:
-                    logging.error('found an error in config.json: %s',
-                                  e.message)
-                    sys.exit(1)
-        else:
-            config = {}
-
-        v_count = 0
-        for key, value in optlist:
-            if key == '-p':
-                config['server_port'] = int(value)
-            elif key == '-k':
-                config['password'] = to_bytes(value)
-            elif key == '-l':
-                config['local_port'] = int(value)
-            elif key == '-s':
-                config['server'] = to_str(value)
-            elif key == '-m':
-                config['method'] = to_str(value)
-            elif key == '-b':
-                config['local_address'] = to_str(value)
-            elif key == '-v':
-                v_count += 1
-                # '-vv' turns on more verbose mode
-                config['verbose'] = v_count
-            elif key == '-t':
-                config['timeout'] = int(value)
-            elif key == '--fast-open':
-                config['fast_open'] = True
-            elif key == '--workers':
-                config['workers'] = int(value)
-            elif key == '--manager-address':
-                config['manager_address'] = value
-            elif key == '--user':
-                config['user'] = to_str(value)
-            elif key == '--forbidden-ip':
-                config['forbidden_ip'] = to_str(value).split(',')
-            elif key in ('-h', '--help'):
-                if is_local:
-                    print_local_help()
-                else:
-                    print_server_help()
-                sys.exit(0)
-            elif key == '--version':
-                print_shadowsocks()
-                sys.exit(0)
-            elif key == '-d':
-                config['daemon'] = to_str(value)
-            elif key == '--pid-file':
-                config['pid-file'] = to_str(value)
-            elif key == '--log-file':
-                config['log-file'] = to_str(value)
-            elif key == '-q':
-                v_count -= 1
-                config['verbose'] = v_count
     except getopt.GetoptError as e:
         print(e, file=sys.stderr)
         print_help(is_local)
         sys.exit(2)
 
-    if not config:
-        logging.error('config not specified')
-        print_help(is_local)
-        sys.exit(2)
+    options = dict(optlist)
 
-    config['password'] = to_bytes(config.get('password', b''))
-    config['method'] = to_str(config.get('method', 'aes-256-cfb'))
-    config['port_password'] = config.get('port_password', None)
-    config['timeout'] = int(config.get('timeout', 300))
-    config['fast_open'] = config.get('fast_open', False)
-    config['workers'] = config.get('workers', 1)
-    config['pid-file'] = config.get('pid-file', '/tmp/shadowsocks.pid')
-    config['log-file'] = config.get('log-file', '/tmp/shadowsocks.log')
-    config['verbose'] = config.get('verbose', False)
-    config['local_address'] = to_str(config.get('local_address', '127.0.0.1'))
-    config['local_port'] = config.get('local_port', 1080)
+    if '-h' in options or '--help' in options:
+        print_help(is_local)
+        sys.exit(0)
+    elif '--version' in options:
+        print_shadowsocks()
+        sys.exit(0)
+
+    config = parse_config_file(options.get('-c'))
+    config['server'] = to_str(options.get('-s', '' if is_local else '0.0.0.0'))
+    config['server_port'] = int(options.get('-p', 8388))
+    config['password'] = to_bytes(options.get('-k', b''))
+    config['method'] = to_str(options.get('-m', 'aes-256-cfb'))
+    config['local_address'] = to_str(options.get('-b', '127.0.0.1'))
+    config['local_port'] = int(options.get('-l', 1080))
+    config['verbose'] = 1 if '-v' in options else 0
+    config['timeout'] = int(options.get('-t', 300))
+    config['fast_open'] = True if '--fast-open' in options else False
+    config['workers'] = int(options.get('--workers', 1))
+    config['manager_address'] = options.get('--manager-address', '')
+    config['user'] = to_str(options.get('--user', ''))
+    config['forbidden_ip'] = to_str(
+        options.get('--forbidden-ip', '127.0.0.0/8,::1/128')).split(',')
+    config['daemon'] = to_str(options.get('-d', ''))
+    config['pid-file'] = to_str(options.get('--pid-file',
+                                            '/tmp/shadowsocks.pid'))
+    config['log-file'] = to_str(options.get('--log-file',
+                                            '/tmp/shadowsocks.log'))
+    config['verbose'] = config['verbose'] - 1 \
+        if '-q' in options else config['verbose']
+    config['port_password'] = options.get('port_password', None)
+
     if is_local:
-        if config.get('server', None) is None:
+        if not config['server'] and \
+                config['daemon'] not in ('stop', 'restart'):
+            """server must be specified when try to start sslocal"""
             logging.error('server addr not specified')
             print_local_help()
             sys.exit(2)
-        else:
-            config['server'] = to_str(config['server'])
     else:
-        config['server'] = to_str(config.get('server', '0.0.0.0'))
         try:
-            config['forbidden_ip'] = \
-                IPNetwork(config.get('forbidden_ip', '127.0.0.0/8,::1/128'))
+            config['forbidden_ip'] = IPNetwork(config['forbidden_ip'])
         except Exception as e:
             logging.error(e)
             sys.exit(2)
-    config['server_port'] = config.get('server_port', 8388)
 
     logging.getLogger('').handlers = []
     logging.addLevelName(VERBOSE_LEVEL, 'VERBOSE')
@@ -362,4 +312,19 @@ def _decode_dict(data):
 
 def parse_json_in_str(data):
     # parse json and convert everything from unicode to str
-    return json.loads(data, object_hook=_decode_dict)
+    return json.loads(data.encode('utf8'), object_hook=_decode_dict)
+
+
+def parse_config_file(config_path):
+    if not config_path:
+        return {}
+
+    logging.info('loading config from %s' % config_path)
+    with open(config_path, 'rb') as f:
+        try:
+            config = parse_json_in_str(f.read())
+        except ValueError as e:
+            logging.error('found an error in config.json: %s',
+                          e.message)
+            sys.exit(1)
+    return config
