@@ -1,4 +1,4 @@
-shadowsocks
+Shadowsocks
 ===========
 
 |PyPI version| |Build Status| |Coverage Status|
