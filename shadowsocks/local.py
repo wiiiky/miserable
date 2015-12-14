@@ -67,7 +67,7 @@ def main():
             sys.exit(1)
         signal.signal(signal.SIGINT, int_handler)
 
-        daemon.set_user(config.get('user', None))
+        daemon.set_user(config['user'])
         loop.run()
     except Exception as e:
         shell.print_exception(e)

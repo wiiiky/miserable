@@ -29,25 +29,27 @@ from shadowsocks import common, shell
 
 
 def daemon_exec(config):
-    if 'daemon' in config:
-        if os.name != 'posix':
-            raise Exception('daemon mode is only supported on Unix')
-        command = config['daemon']
-        if not command:
-            command = 'start'
-        pid_file = config['pid-file']
-        log_file = config['log-file']
-        if command == 'start':
-            daemon_start(pid_file, log_file)
-        elif command == 'stop':
-            daemon_stop(pid_file)
-            # always exit after daemon_stop
-            sys.exit(0)
-        elif command == 'restart':
-            daemon_stop(pid_file)
-            daemon_start(pid_file, log_file)
-        else:
-            raise Exception('unsupported daemon command %s' % command)
+    if not config['daemon']:
+        return
+
+    if os.name != 'posix':
+        raise Exception('daemon mode is only supported on Unix')
+    command = config['daemon']
+    if not command:
+        command = 'start'
+    pid_file = config['pid-file']
+    log_file = config['log-file']
+    if command == 'start':
+        daemon_start(pid_file, log_file)
+    elif command == 'stop':
+        daemon_stop(pid_file)
+        # always exit after daemon_stop
+        sys.exit(0)
+    elif command == 'restart':
+        daemon_stop(pid_file)
+        daemon_start(pid_file, log_file)
+    else:
+        raise Exception('unsupported daemon command %s' % command)
 
 
 def write_pid_file(pid_file, pid):

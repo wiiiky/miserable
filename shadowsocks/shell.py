@@ -74,9 +74,15 @@ def find_config():
 
 
 def check_config(config, is_local):
-    if config.get('daemon', None) == 'stop':
-        # no need to specify configuration for daemon stop
+    if config['daemon'] == 'stop':
+        # no need to specify configuration for daemon stop/restart
         return
+
+    if is_local and not config['server']:
+        """server must be specified when try to start sslocal"""
+        logging.error('server addr not specified')
+        print_local_help()
+        sys.exit(2)
 
     if is_local and not config.get('password', None):
         logging.error('password not specified')
@@ -178,19 +184,11 @@ def get_config(is_local):
         if '-q' in options else config['verbose']
     config['port_password'] = options.get('port_password', None)
 
-    if is_local:
-        if not config['server'] and \
-                config['daemon'] not in ('stop', 'restart'):
-            """server must be specified when try to start sslocal"""
-            logging.error('server addr not specified')
-            print_local_help()
-            sys.exit(2)
-    else:
-        try:
-            config['forbidden_ip'] = IPNetwork(config['forbidden_ip'])
-        except Exception as e:
-            logging.error(e)
-            sys.exit(2)
+    try:
+        config['forbidden_ip'] = IPNetwork(config['forbidden_ip'])
+    except Exception as e:
+        logging.error(e)
+        sys.exit(2)
 
     logging.getLogger('').handlers = []
     logging.addLevelName(VERBOSE_LEVEL, 'VERBOSE')
@@ -316,15 +314,17 @@ def parse_json_in_str(data):
 
 
 def parse_config_file(config_path):
+    """parse the json format configuration file"""
     if not config_path:
         return {}
 
     logging.info('loading config from %s' % config_path)
-    with open(config_path, 'rb') as f:
-        try:
+
+    try:
+        with open(config_path, 'rb') as f:
             config = parse_json_in_str(f.read())
-        except ValueError as e:
-            logging.error('found an error in config.json: %s',
-                          e.message)
-            sys.exit(1)
+    except (ValueError, IOError) as e:
+        logging.error(str(e))
+        logging.error('fail to load config from %s!' % (config_path, ))
+        sys.exit(1)
     return config
