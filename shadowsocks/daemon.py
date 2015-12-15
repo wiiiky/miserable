@@ -35,8 +35,6 @@ def daemon_exec(config):
     if os.name != 'posix':
         raise Exception('daemon mode is only supported on Unix')
     command = config['daemon']
-    if not command:
-        command = 'start'
     pid_file = config['pid-file']
     log_file = config['log-file']
     if command == 'start':

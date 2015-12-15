@@ -63,16 +63,6 @@ def print_shadowsocks():
     print('Shadowsocks %s' % version)
 
 
-def find_config():
-    config_path = 'config.json'
-    if os.path.exists(config_path):
-        return config_path
-    config_path = os.path.join(os.path.dirname(__file__), '../', 'config.json')
-    if os.path.exists(config_path):
-        return config_path
-    return None
-
-
 def check_config(config, is_local):
     if config['daemon'] == 'stop':
         # no need to specify configuration for daemon stop/restart
@@ -84,53 +74,48 @@ def check_config(config, is_local):
         print_local_help()
         sys.exit(2)
 
-    if is_local and not config.get('password', None):
+    if is_local and not config['password']:
         logging.error('password not specified')
         print_help(is_local)
         sys.exit(2)
 
-    if not is_local and not config.get('password', None) \
-            and not config.get('port_password', None):
+    if not is_local and not config['password'] \
+            and not config['port_password']:
         logging.error('password or port_password not specified')
         print_help(is_local)
         sys.exit(2)
 
-    if 'local_port' in config:
-        config['local_port'] = int(config['local_port'])
-
-    if 'server_port' in config and type(config['server_port']) != list:
-        config['server_port'] = int(config['server_port'])
-
-    if config.get('local_address', '') in [b'0.0.0.0']:
+    if config['local_address'] in [b'0.0.0.0']:
         logging.warn('warning: local set to listen on 0.0.0.0, it\'s not safe')
-    if config.get('server', '') in ['127.0.0.1', 'localhost']:
+    if config['server'] in ['127.0.0.1', 'localhost']:
         logging.warn('warning: server set to listen on %s:%s, are you sure?' %
-                     (to_str(config['server']), config['server_port']))
-    if (config.get('method', '') or '').lower() == 'table':
+                     (config['server'], config['server_port']))
+    if config['method'].lower() == 'table':
         logging.warn('warning: table is not safe; please use a safer cipher, '
                      'like AES-256-CFB')
-    if (config.get('method', '') or '').lower() == 'rc4':
+    if config['method'].lower() == 'rc4':
         logging.warn('warning: RC4 is not safe; please use a safer cipher, '
                      'like AES-256-CFB')
-    if config.get('timeout', 300) < 100:
-        logging.warn('warning: your timeout %d seems too short' %
-                     int(config.get('timeout')))
-    if config.get('timeout', 300) > 600:
+    if config['timeout'] < 100:
+        logging.warn('warning: timeout %ds seems too short' %
+                     config.get('timeout'))
+    if config['timeout'] > 600:
         logging.warn('warning: your timeout %d seems too long' %
-                     int(config.get('timeout')))
-    if config.get('password') in [b'mypassword']:
+                     config.get('timeout'))
+    if config['password'] in [b'mypassword']:
         logging.error('DON\'T USE DEFAULT PASSWORD! Please change it in your '
                       'config.json!')
         sys.exit(1)
-    if config.get('user', None) is not None:
+    if config['user']:
         if os.name != 'posix':
-            logging.error('user can be used only on Unix')
+            logging.error('user can be used only on POSIX compatible system.')
             sys.exit(1)
 
     encrypt.try_cipher(config['password'], config['method'])
 
 
 def get_config(is_local):
+    """parse config from config.json and shell arguments"""
     global verbose
 
     logging.basicConfig(level=logging.INFO,
@@ -144,7 +129,6 @@ def get_config(is_local):
         longopts = ['help', 'fast-open', 'pid-file=', 'log-file=', 'workers=',
                     'forbidden-ip=', 'user=', 'manager-address=', 'version']
     try:
-        config_path = find_config()
         optlist, args = getopt.getopt(sys.argv[1:], shortopts, longopts)
     except getopt.GetoptError as e:
         print(e, file=sys.stderr)
@@ -161,28 +145,40 @@ def get_config(is_local):
         sys.exit(0)
 
     config = parse_config_file(options.get('-c'))
-    config['server'] = to_str(options.get('-s', '' if is_local else '0.0.0.0'))
-    config['server_port'] = int(options.get('-p', 8388))
-    config['password'] = to_bytes(options.get('-k', b''))
-    config['method'] = to_str(options.get('-m', 'aes-256-cfb'))
-    config['local_address'] = to_str(options.get('-b', '127.0.0.1'))
-    config['local_port'] = int(options.get('-l', 1080))
-    config['verbose'] = 1 if '-v' in options else 0
-    config['timeout'] = int(options.get('-t', 300))
-    config['fast_open'] = True if '--fast-open' in options else False
-    config['workers'] = int(options.get('--workers', 1))
-    config['manager_address'] = options.get('--manager-address', '')
-    config['user'] = to_str(options.get('--user', ''))
+
+    def get_option(name, opt, default):
+        """get command line argument if exists"""
+        if opt in options:
+            return options[opt] or True
+        if name not in config:
+            return default
+        return config[name]
+
+    config['server'] = to_str(get_option(
+        'server', '-s', '' if is_local else '0.0.0.0'))
+    config['server_port'] = int(get_option('server_port', '-p', 8388))
+    config['password'] = to_bytes(get_option('password', '-k', b''))
+    config['method'] = to_str(get_option('method', '-m', 'aes-256-cfb'))
+    config['local_address'] = to_str(
+        get_option('local_address', '-b', '127.0.0.1'))
+    config['local_port'] = int(get_option('local_port', '-l', 1080))
+    config['verbose'] = int(get_option('verbose', '-v', 0))
+    config['timeout'] = int(get_option('timeout', '-t', 300))
+    config['fast_open'] = get_option('fast_open', '--fast-open', False)
+    config['workers'] = int(get_option('workers', '--workers', 1))
+    config['manager_address'] = to_str(get_option(
+        'manager_address', '--manager-address', ''))
+    config['user'] = to_str(get_option('user', '--user', ''))
     config['forbidden_ip'] = to_str(
-        options.get('--forbidden-ip', '127.0.0.0/8,::1/128')).split(',')
-    config['daemon'] = to_str(options.get('-d', ''))
-    config['pid-file'] = to_str(options.get('--pid-file',
-                                            '/tmp/shadowsocks.pid'))
-    config['log-file'] = to_str(options.get('--log-file',
-                                            '/tmp/shadowsocks.log'))
-    config['verbose'] = config['verbose'] - 1 \
-        if '-q' in options else config['verbose']
-    config['port_password'] = options.get('port_password', None)
+        get_option('forbidden_ip', '--forbidden-ip', '127.0.0.0/8,::1/128')).split(',')
+    config['daemon'] = to_str(get_option('daemon', '-d', ''))
+    config['pid-file'] = to_str(get_option('pid-file',
+                                           '--pid-file', '/tmp/shadowsocks.pid'))
+    config['log-file'] = to_str(get_option('log-file',
+                                           '--log-file', '/tmp/shadowsocks.log'))
+    config['verbose'] = config['verbose'] - \
+        1 if '-q' in options else config['verbose']
+    config['port_password'] = ''
 
     try:
         config['forbidden_ip'] = IPNetwork(config['forbidden_ip'])

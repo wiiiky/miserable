@@ -96,7 +96,7 @@ def main():
             shell.print_exception(e)
             sys.exit(1)
 
-    if int(config['workers']) > 1:
+    if config['workers'] > 1:
         if os.name == 'posix':
             children = []
             is_child = False
