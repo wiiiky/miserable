@@ -140,7 +140,7 @@ class Manager(object):
             return data, None
         command, config_json = parts
         try:
-            config = shell.parse_json_in_str(config_json)
+            config = shell.json_loads(config_json)
             return command, config
         except Exception as e:
             logging.error(e)

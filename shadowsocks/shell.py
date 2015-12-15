@@ -106,10 +106,9 @@ def check_config(config, is_local):
         logging.error('DON\'T USE DEFAULT PASSWORD! Please change it in your '
                       'config.json!')
         sys.exit(1)
-    if config['user']:
-        if os.name != 'posix':
-            logging.error('user can be used only on POSIX compatible system.')
-            sys.exit(1)
+    if config['user'] and os.name != 'posix':
+        logging.error('user can be used only on POSIX compatible system.')
+        sys.exit(1)
 
     encrypt.try_cipher(config['password'], config['method'])
 
@@ -144,14 +143,20 @@ def get_config(is_local):
         print_shadowsocks()
         sys.exit(0)
 
-    config = parse_config_file(options.get('-c'))
+    """
+    argument priority
+    command line argument > config.json > default value
+    """
+    config = read_json_config(options.get('-c'))
 
     def get_option(name, opt, default):
-        """get command line argument if exists"""
         if opt in options:
+            """if command line argument exists, use it"""
             return options[opt] or True
         if name not in config:
+            """if argument is not specified in config.json, use default value"""
             return default
+        """config.json value"""
         return config[name]
 
     config['server'] = to_str(get_option(
@@ -304,12 +309,12 @@ def _decode_dict(data):
     return rv
 
 
-def parse_json_in_str(data):
+def json_loads(data):
     # parse json and convert everything from unicode to str
     return json.loads(data.encode('utf8'), object_hook=_decode_dict)
 
 
-def parse_config_file(config_path):
+def read_json_config(config_path):
     """parse the json format configuration file"""
     if not config_path:
         return {}
@@ -318,7 +323,7 @@ def parse_config_file(config_path):
 
     try:
         with open(config_path, 'rb') as f:
-            config = parse_json_in_str(f.read())
+            config = json_loads(f.read())
     except (ValueError, IOError) as e:
         logging.error(str(e))
         logging.error('fail to load config from %s!' % (config_path, ))
