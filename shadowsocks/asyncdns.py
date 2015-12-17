@@ -29,7 +29,7 @@ from shadowsocks import common, lru_cache, eventloop, shell
 
 CACHE_SWEEP_INTERVAL = 30
 
-VALID_HOSTNAME = re.compile(br"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+VALID_HOSTNAME = re.compile(br'(?!-)[A-Z\d-]{1,63}(?<!-)$', re.IGNORECASE)
 
 common.patch_socket()
 
@@ -185,43 +185,43 @@ def parse_header(data):
 
 def parse_response(data):
     try:
-        if len(data) >= 12:
-            header = parse_header(data)
-            if not header:
-                return None
-            res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount, \
-                res_ancount, res_nscount, res_arcount = header
+        if len(data) < 12:
+            return
+        header = parse_header(data)
+        if not header:
+            return
+        res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount, \
+            res_ancount, res_nscount, res_arcount = header
 
-            qds = []
-            ans = []
-            offset = 12
-            for i in range(0, res_qdcount):
-                l, r = parse_record(data, offset, True)
-                offset += l
-                if r:
-                    qds.append(r)
-            for i in range(0, res_ancount):
-                l, r = parse_record(data, offset)
-                offset += l
-                if r:
-                    ans.append(r)
-            for i in range(0, res_nscount):
-                l, r = parse_record(data, offset)
-                offset += l
-            for i in range(0, res_arcount):
-                l, r = parse_record(data, offset)
-                offset += l
-            response = DNSResponse()
-            if qds:
-                response.hostname = qds[0][0]
-            for an in qds:
-                response.questions.append((an[1], an[2], an[3]))
-            for an in ans:
-                response.answers.append((an[1], an[2], an[3]))
-            return response
+        qds = []
+        ans = []
+        offset = 12
+        for i in range(0, res_qdcount):
+            l, r = parse_record(data, offset, True)
+            offset += l
+            if r:
+                qds.append(r)
+        for i in range(0, res_ancount):
+            l, r = parse_record(data, offset)
+            offset += l
+            if r:
+                ans.append(r)
+        for i in range(0, res_nscount):
+            l, r = parse_record(data, offset)
+            offset += l
+        for i in range(0, res_arcount):
+            l, r = parse_record(data, offset)
+            offset += l
+        response = DNSResponse()
+        if qds:
+            response.hostname = qds[0][0]
+        for an in qds:
+            response.questions.append((an[1], an[2], an[3]))
+        for an in ans:
+            response.answers.append((an[1], an[2], an[3]))
+        return response
     except Exception as e:
         shell.print_exception(e)
-        return None
 
 
 def is_valid_hostname(hostname):
@@ -266,20 +266,14 @@ class DNSResolver(object):
     def _parse_resolv(self):
         self._servers = []
         try:
-            with open('/etc/resolv.conf', 'rb') as f:
-                content = f.readlines()
-                for line in content:
+            with open('/etc/resolv.conf', 'r') as f:
+                for line in f.readlines():
                     line = line.strip()
-                    if line:
-                        if line.startswith(b'nameserver'):
-                            parts = line.split()
-                            if len(parts) >= 2:
-                                server = parts[1]
-                                if common.is_ip(server) == socket.AF_INET:
-                                    if type(server) != str:
-                                        server = server.decode('utf8')
-                                    self._servers.append(server)
-        except IOError:
+                    if line and line.startswith('nameserver'):
+                        parts = line.split()
+                        if len(parts) >= 2 and common.is_ip(parts[1]) == socket.AF_INET:
+                            self._servers.append(parts[1])
+        except IOError as e:
             pass
         if not self._servers:
             self._servers = ['8.8.4.4', '8.8.8.8']
@@ -289,29 +283,32 @@ class DNSResolver(object):
         if 'WINDIR' in os.environ:
             etc_path = os.environ['WINDIR'] + '/system32/drivers/etc/hosts'
         try:
-            with open(etc_path, 'rb') as f:
+            with open(etc_path, 'r') as f:
                 for line in f.readlines():
                     line = line.strip()
                     parts = line.split()
                     if len(parts) >= 2:
                         ip = parts[0]
                         if common.is_ip(ip):
-                            for i in range(1, len(parts)):
-                                hostname = parts[i]
+                            for hostname in parts[1:]:
                                 if hostname:
                                     self._hosts[hostname] = ip
-        except IOError:
+        except IOError as e:
             self._hosts['localhost'] = '127.0.0.1'
+
+    def _refresh(self):
+        # create or refresh DNS socket
+        # TODO when dns server is IPv6
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
+                                   socket.SOL_UDP)
+        self._sock.setblocking(False)
+        self._loop.add(self._sock, eventloop.POLL_IN, self)
 
     def add_to_loop(self, loop):
         if self._loop:
             raise Exception('already add to loop')
         self._loop = loop
-        # TODO when dns server is IPv6
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
-                                   socket.SOL_UDP)
-        self._sock.setblocking(False)
-        loop.add(self._sock, eventloop.POLL_IN, self)
+        self._refresh()
         loop.add_periodic(self.handle_periodic)
 
     def _call_callback(self, hostname, ip, error=None):
@@ -360,12 +357,8 @@ class DNSResolver(object):
             logging.error('dns socket err')
             self._loop.remove(self._sock)
             self._sock.close()
-            # TODO when dns server is IPv6
-            self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
-                                       socket.SOL_UDP)
-            self._sock.setblocking(False)
-            self._loop.add(self._sock, eventloop.POLL_IN, self)
-        else:
+            self._refresh()
+        elif event & eventloop.POLL_IN:
             data, addr = sock.recvfrom(1024)
             if addr[0] not in self._servers:
                 logging.warn('received a packet other than our dns')

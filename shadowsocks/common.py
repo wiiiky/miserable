@@ -42,16 +42,14 @@ chr = compat_chr
 
 
 def to_bytes(s):
-    if bytes != str:
-        if type(s) == str:
-            return s.encode('utf-8')
+    if bytes != str and type(s) == str:
+        return s.encode('utf-8')
     return s
 
 
 def to_str(s):
-    if bytes != str:
-        if type(s) == bytes:
-            return s.decode('utf-8')
+    if bytes != str and type(s) == bytes:
+        return s.decode('utf-8')
     return s
 
 
@@ -98,8 +96,7 @@ def inet_pton(family, addr):
 def is_ip(address):
     for family in (socket.AF_INET, socket.AF_INET6):
         try:
-            if type(address) != str:
-                address = address.decode('utf8')
+            address = to_str(address)
             inet_pton(family, address)
             return family
         except (TypeError, ValueError, OSError, IOError):
