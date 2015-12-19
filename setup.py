@@ -7,13 +7,13 @@ with codecs.open('README.origin.rst', encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
-    name="shadowsocks",
-    version="2.8.2",
+    name='shadowsocks',
+    version='2.8.2',
     license='http://www.apache.org/licenses/LICENSE-2.0',
     description="A fast tunnel proxy that help you get through firewalls",
-    author='clowwindy',
-    author_email='clowwindy42@gmail.com',
-    url='https://github.com/shadowsocks/shadowsocks',
+    author='Wiky',
+    author_email='wiiiky@outlook.com',
+    url='https://github.com/wiiiky/shadowsocks',
     packages=['shadowsocks', 'shadowsocks.crypto'],
     package_data={
         'shadowsocks': ['README.rst', 'LICENSE']
@@ -37,4 +37,5 @@ setup(
         'Topic :: Internet :: Proxy Servers',
     ],
     long_description=long_description,
+    test_suite='tests',
 )

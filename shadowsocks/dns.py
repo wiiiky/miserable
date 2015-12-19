@@ -109,6 +109,7 @@ class CLASS:
 
 
 def build_hostname(hostname):
+    hostname = common.to_bytes(hostname)
     address = hostname.strip(b'.')
     labels = hostname.split(b'.')
     results = []
