@@ -24,7 +24,7 @@ import struct
 import re
 import logging
 
-from shadowsocks import common, lru_cache, eventloop, shell
+from shadowsocks import common, lru_cache, eventloop, shell, dns
 
 
 CACHE_SWEEP_INTERVAL = 30
@@ -32,197 +32,6 @@ CACHE_SWEEP_INTERVAL = 30
 VALID_HOSTNAME = re.compile(br'(?!-)[A-Z\d-]{1,63}(?<!-)$', re.IGNORECASE)
 
 common.patch_socket()
-
-# rfc1035
-# format
-# +---------------------+
-# |        Header       |
-# +---------------------+
-# |       Question      | the question for the name server
-# +---------------------+
-# |        Answer       | RRs answering the question
-# +---------------------+
-# |      Authority      | RRs pointing toward an authority
-# +---------------------+
-# |      Additional     | RRs holding additional information
-# +---------------------+
-#
-# header
-#                                 1  1  1  1  1  1
-#   0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
-# +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-# |                      ID                       |
-# +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-# |QR|   Opcode  |AA|TC|RD|RA|   Z    |   RCODE   |
-# +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-# |                    QDCOUNT                    |
-# +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-# |                    ANCOUNT                    |
-# +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-# |                    NSCOUNT                    |
-# +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-# |                    ARCOUNT                    |
-# +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-
-QTYPE_ANY = 255
-QTYPE_A = 1
-QTYPE_AAAA = 28
-QTYPE_CNAME = 5
-QTYPE_NS = 2
-QCLASS_IN = 1
-
-
-def build_address(address):
-    address = address.strip(b'.')
-    labels = address.split(b'.')
-    results = []
-    for label in labels:
-        l = len(label)
-        if l > 63:
-            return None
-        results.append(common.chr(l))
-        results.append(label)
-    results.append(b'\0')
-    return b''.join(results)
-
-
-def build_request(address, qtype):
-    request_id = os.urandom(2)
-    header = struct.pack('!BBHHHH', 1, 0, 1, 0, 0, 0)
-    addr = build_address(address)
-    qtype_qclass = struct.pack('!HH', qtype, QCLASS_IN)
-    return request_id + header + addr + qtype_qclass
-
-
-def parse_ip(addrtype, data, length, offset):
-    if addrtype == QTYPE_A:
-        return socket.inet_ntop(socket.AF_INET, data[offset:offset + length])
-    elif addrtype == QTYPE_AAAA:
-        return socket.inet_ntop(socket.AF_INET6, data[offset:offset + length])
-    elif addrtype in [QTYPE_CNAME, QTYPE_NS]:
-        return parse_name(data, offset)[1]
-    else:
-        return data[offset:offset + length]
-
-
-def parse_name(data, offset):
-    """parse hostname from DNS response"""
-    p = offset
-    labels = []
-    l = common.ord(data[p])
-    while l > 0:
-        if (l & (128 + 64)) == (128 + 64):
-            # pointer
-            ptr = struct.unpack('!H', data[p:p + 2])[0]
-            ptr &= 0x3FFF
-            r = parse_name(data, ptr)
-            labels.append(r[1])
-            p += 2
-            # pointer is the end
-            return p - offset, b'.'.join(labels)
-        else:
-            labels.append(data[p + 1:p + 1 + l])
-            p += 1 + l
-        l = common.ord(data[p])
-    return p - offset + 1, b'.'.join(labels)
-
-
-# rfc1035
-# record
-#                                    1  1  1  1  1  1
-#      0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
-#    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-#    |                                               |
-#    /                                               /
-#    /                      NAME                     /
-#    |                                               |
-#    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-#    |                      TYPE                     |
-#    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-#    |                     CLASS                     |
-#    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-#    |                      TTL                      |
-#    |                                               |
-#    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-#    |                   RDLENGTH                    |
-#    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--|
-#    /                     RDATA                     /
-#    /                                               /
-#    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-def parse_record(data, offset, question=False):
-    nlen, name = parse_name(data, offset)
-    if not question:
-        """DNS answer"""
-        record_type, record_class, record_ttl, record_rdlength = struct.unpack(
-            '!HHiH', data[offset + nlen:offset + nlen + 10]
-        )
-        ip = parse_ip(record_type, data, record_rdlength, offset + nlen + 10)
-        return nlen + 10 + record_rdlength, \
-            (name, ip, record_type, record_class, record_ttl)
-    else:
-        """DNS question"""
-        record_type, record_class = struct.unpack(
-            '!HH', data[offset + nlen:offset + nlen + 4]
-        )
-        return nlen + 4, (name, None, record_type, record_class, None, None)
-
-
-def parse_header(data):
-    if len(data) < 12:
-        return None
-    header = struct.unpack('!HBBHHHH', data[:12])
-    res_id = header[0]
-    res_qr = header[1] & 128
-    res_tc = header[1] & 2
-    res_ra = header[2] & 128
-    res_rcode = header[2] & 15
-    # assert res_tc == 0
-    # assert res_rcode in [0, 3]
-    res_qdcount = header[3]
-    res_ancount = header[4]
-    res_nscount = header[5]
-    res_arcount = header[6]
-    return (res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount,
-            res_ancount, res_nscount, res_arcount)
-
-
-def parse_response(data):
-    try:
-        if len(data) < 12:
-            return
-        header = parse_header(data)
-        if not header:
-            return
-        res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount, \
-            res_ancount, res_nscount, res_arcount = header
-
-        qds = []
-        ans = []
-        offset = 12
-        for i in range(0, res_qdcount):
-            l, r = parse_record(data, offset, True)
-            offset += l
-            qds.append(r)
-        for i in range(0, res_ancount):
-            l, r = parse_record(data, offset)
-            offset += l
-            ans.append(r)
-        for i in range(0, res_nscount):
-            l, r = parse_record(data, offset)
-            offset += l
-        for i in range(0, res_arcount):
-            l, r = parse_record(data, offset)
-            offset += l
-        if qds:
-            return {
-                'hostname': qds[0][0],
-                'questions': [{'addr': a[1], 'type': a[2], 'class': a[3]}
-                              for a in qds if a],
-                'answers': [{'addr': a[1], 'type': a[2], 'class': a[3]}
-                            for a in ans if a],
-            }
-    except Exception as e:
-        shell.print_exception(e)
 
 
 def is_valid_hostname(hostname):
@@ -241,57 +50,20 @@ class DNSResolver(object):
 
     def __init__(self):
         self._loop = None
-        self._hosts = {}
+        self._hosts = dns.load_hosts_conf()
+        self._servers = dns.load_resolv_conf()
         self._hostname_status = {}
         self._hostname_to_cb = {}
         self._cb_to_hostname = {}
         self._cache = lru_cache.LRUCache(timeout=300)
         self._sock = None
-        self._servers = None
-        self._parse_resolv_conf()
-        self._parse_hosts_conf()
         # TODO monitor hosts change and reload hosts
         # TODO parse /etc/gai.conf and follow its rules
-
-    def _parse_resolv_conf(self):
-        """"""
-        self._servers = []
-        try:
-            with open('/etc/resolv.conf', 'r') as f:
-                for line in f.readlines():
-                    line = line.strip()
-                    if line and line.startswith('nameserver'):
-                        parts = line.split()
-                        if len(parts) >= 2 and common.is_ip(parts[1]) \
-                                == socket.AF_INET:
-                            self._servers.append(parts[1])
-        except IOError as e:
-            pass
-        if not self._servers:
-            self._servers = ['8.8.4.4', '8.8.8.8']
-
-    def _parse_hosts_conf(self):
-        """parse hosts file"""
-        etc_path = os.environ['WINDIR'] + '/system32/drivers/etc/hosts'\
-            if 'WINDIR' in os.environ else '/etc/hosts'
-        try:
-            with open(etc_path, 'r') as f:
-                for line in f.readlines():
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        ip = parts[0]
-                        if common.is_ip(ip):
-                            for hostname in parts[1:]:
-                                if hostname:
-                                    self._hosts[hostname] = ip
-        except IOError as e:
-            self._hosts['localhost'] = '127.0.0.1'
 
     def _refresh(self):
         # create or refresh DNS socket
         # TODO when dns server is IPv6
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
-                                   socket.SOL_UDP)
+        self._sock = dns.Socket(self._servers)
         self._sock.setblocking(False)
         self._loop.add(self._sock, eventloop.POLL_IN, self)
 
@@ -317,26 +89,25 @@ class DNSResolver(object):
         if hostname in self._hostname_status:
             del self._hostname_status[hostname]
 
-    def _handle_data(self, data):
-        response = parse_response(data)
+    def _handle_response(self, response):
         if response:
             hostname = response['hostname']
             ip = None
             for answer in response['answers']:
-                if answer['type'] in (QTYPE_A, QTYPE_AAAA) and \
-                        answer['class'] == QCLASS_IN:
+                if answer['type'] in (dns.TYPE.A, dns.TYPE.AAAA) and \
+                        answer['class'] == dns.CLASS.IN:
                     ip = answer['addr']
                     break
             if not ip and self._hostname_status.get(hostname, STATUS_IPV6) \
                     == STATUS_IPV4:
                 self._hostname_status[hostname] = STATUS_IPV6
-                self._send_req(hostname, QTYPE_AAAA)
+                self._sock.send_dns_request(hostname, dns.TYPE.AAAA)
             elif ip:
                 self._cache[hostname] = ip
                 self._call_callback(hostname, ip)
             elif self._hostname_status.get(hostname, None) == STATUS_IPV6:
-                for question in response.questions:
-                    if question['type'] == QTYPE_AAAA:
+                for question in response['questions']:
+                    if question['type'] == dns.TYPE.AAA:
                         self._call_callback(hostname, None)
                         break
 
@@ -349,11 +120,8 @@ class DNSResolver(object):
             self._sock.close()
             self._refresh()
         elif event & eventloop.POLL_IN:
-            data, addr = sock.recvfrom(1024)
-            if addr[0] not in self._servers:
-                logging.warn('received a packet other than our dns')
-                return
-            self._handle_data(data)
+            response = sock.recv_dns_response()
+            self._handle_response(response)
 
     def handle_periodic(self):
         self._cache.sweep()
@@ -369,13 +137,6 @@ class DNSResolver(object):
                     del self._hostname_to_cb[hostname]
                     if hostname in self._hostname_status:
                         del self._hostname_status[hostname]
-
-    def _send_req(self, hostname, qtype):
-        req = build_request(hostname, qtype)
-        for server in self._servers:
-            logging.debug('resolving %s with type %d using server %s',
-                          hostname, qtype, server)
-            self._sock.sendto(req, (server, 53))
 
     def resolve(self, hostname, callback):
         hostname = common.to_bytes(hostname)
@@ -398,13 +159,13 @@ class DNSResolver(object):
             arr = self._hostname_to_cb.get(hostname, None)
             if not arr:
                 self._hostname_status[hostname] = STATUS_IPV4
-                self._send_req(hostname, QTYPE_A)
                 self._hostname_to_cb[hostname] = [callback]
                 self._cb_to_hostname[callback] = hostname
+                self._sock.send_dns_request(hostname)
             else:
                 arr.append(callback)
                 # TODO send again only if waited too long
-                self._send_req(hostname, QTYPE_A)
+                self._sock.send_dns_request(hostname)
 
     def close(self):
         if self._sock:
