@@ -159,7 +159,8 @@ def get_config(is_local):
         """config.json value"""
         return config[name]
 
-    config['server'] = get_option('server', '-s', '' if is_local else '0.0.0.0')
+    config['server'] = get_option(
+        'server', '-s', '' if is_local else '0.0.0.0')
     config['server_port'] = int(get_option('server_port', '-p', 8388))
     config['password'] = to_bytes(get_option('password', '-k', b''))
     config['method'] = get_option('method', '-m', 'aes-256-cfb')
@@ -169,12 +170,16 @@ def get_config(is_local):
     config['timeout'] = int(get_option('timeout', '-t', 300))
     config['fast_open'] = get_option('fast_open', '--fast-open', False)
     config['workers'] = int(get_option('workers', '--workers', 1))
-    config['manager_address'] = get_option('manager_address', '--manager-address', '')
+    config['manager_address'] = get_option(
+        'manager_address', '--manager-address', '')
     config['user'] = get_option('user', '--user', '')
-    config['forbidden_ip'] = get_option('forbidden_ip', '--forbidden-ip', '127.0.0.0/8,::1/128').split(',')
+    config['forbidden_ip'] = get_option(
+        'forbidden_ip', '--forbidden-ip', '127.0.0.0/8,::1/128').split(',')
     config['daemon'] = get_option('daemon', '-d', '')
-    config['pid-file'] = get_option('pid-file', '--pid-file', '/tmp/shadowsocks.pid')
-    config['log-file'] = get_option('log-file', '--log-file', '/tmp/shadowsocks.log')
+    config['pid-file'] = get_option('pid-file',
+                                    '--pid-file', '/tmp/shadowsocks.pid')
+    config['log-file'] = get_option('log-file',
+                                    '--log-file', '/tmp/shadowsocks.log')
     config['verbose'] = config['verbose'] - \
         1 if '-q' in options else config['verbose']
     config['port_password'] = ''
