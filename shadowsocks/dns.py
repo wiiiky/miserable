@@ -76,6 +76,7 @@ from shadowsocks import common
 
 import struct
 import socket
+import json
 import os
 
 
@@ -145,114 +146,121 @@ class Request(object):
         return mid + header + addr + qtype_qclass
 
 
-def parse_ip(rtype, data, length, offset):
-    if rtype == TYPE.A:
-        return socket.inet_ntop(socket.AF_INET, data[offset:offset + length])
-    elif rtype == TYPE.AAAA:
-        return socket.inet_ntop(socket.AF_INET6, data[offset:offset + length])
-    elif rtype in [TYPE.CNAME, TYPE.NS]:
-        return parse_name(data, offset)[1]
-    else:
-        return data[offset:offset + length]
+class Response(object):
+    """DNS Result"""
 
+    def __init__(self, data):
+        self.data = data
+        self.hostname = None
+        self.questions = None
+        self.answers = None
+        self._parse_response()
 
-def parse_name(data, offset):
-    """parse hostname from DNS response"""
-    p = offset
-    labels = []
-    l = common.ord(data[p])
-    while l > 0:
-        if (l & (128 + 64)) == (128 + 64):
-            # pointer
-            ptr = struct.unpack('!H', data[p:p + 2])[0]
-            ptr &= 0x3FFF
-            r = parse_name(data, ptr)
-            labels.append(r[1])
-            p += 2
-            # pointer is the end
-            return p - offset, b'.'.join(labels)
+    def is_valid(self):
+        return bool(self.hostname) and bool(self.answers) and bool(self.questions)
+
+    def _parse_response(self):
+        """parse the DNS response"""
+        data = self.data
+        try:
+            if len(data) < 12:
+                return
+            header = self._parse_header()
+            if not header:
+                return
+            res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount, \
+                res_ancount, res_nscount, res_arcount = header
+
+            qds = []
+            ans = []
+            offset = 12
+            for i in range(0, res_qdcount):
+                l, r = self._parse_record(offset, True)
+                offset += l
+                qds.append(r)
+            for i in range(0, res_ancount):
+                l, r = self._parse_record(offset)
+                offset += l
+                ans.append(r)
+            for i in range(0, res_nscount):
+                l, r = self._parse_record(offset)
+                offset += l
+            for i in range(0, res_arcount):
+                l, r = self._parse_record(offset)
+                offset += l
+            if qds:
+                self.hostname = qds[0][0]
+                self.questions = [{'addr': a[1], 'type': a[
+                    2], 'class': a[3]} for a in qds if a]
+                self.answers = [{'addr': a[1], 'type': a[
+                    2], 'class': a[3]} for a in ans if a]
+        except Exception as e:
+            shell.print_exception(e)
+
+    def _parse_header(self):
+        header = struct.unpack('!HBBHHHH', self.data[:12])
+        res_id = header[0]
+        res_qr = header[1] & 128
+        res_tc = header[1] & 2
+        res_ra = header[2] & 128
+        res_rcode = header[2] & 15
+        # assert res_tc == 0
+        # assert res_rcode in [0, 3]
+        res_qdcount = header[3]
+        res_ancount = header[4]
+        res_nscount = header[5]
+        res_arcount = header[6]
+        return (res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount,
+                res_ancount, res_nscount, res_arcount)
+
+    def _parse_record(self, offset, question=False):
+        nlen, name = self._parse_name(offset)
+        if not question:
+            """DNS answer"""
+            record_type, record_class, record_ttl, record_rdlength = struct.unpack(
+                '!HHiH', self.data[offset + nlen:offset + nlen + 10]
+            )
+            ip = self._parse_ip(
+                record_type, record_rdlength, offset + nlen + 10)
+            return nlen + 10 + record_rdlength, \
+                (name, ip, record_type, record_class, record_ttl)
         else:
-            labels.append(data[p + 1:p + 1 + l])
-            p += 1 + l
-        l = common.ord(data[p])
-    return p - offset + 1, b'.'.join(labels)
+            """DNS question"""
+            record_type, record_class = struct.unpack(
+                '!HH', self.data[offset + nlen:offset + nlen + 4]
+            )
+            return nlen + 4, (name, None, record_type, record_class, None, None)
 
+    def _parse_name(self, offset):
+        """parse hostname from DNS response"""
+        p = offset
+        labels = []
+        l = common.ord(self.data[p])
+        while l > 0:
+            if (l & (128 + 64)) == (128 + 64):
+                # pointer
+                ptr = struct.unpack('!H', self.data[p:p + 2])[0]
+                ptr &= 0x3FFF
+                r = self._parse_name(ptr)
+                labels.append(r[1])
+                p += 2
+                # pointer is the end
+                return p - offset, b'.'.join(labels)
+            else:
+                labels.append(self.data[p + 1:p + 1 + l])
+                p += 1 + l
+            l = common.ord(self.data[p])
+        return p - offset + 1, b'.'.join(labels)
 
-def parse_record(data, offset, question=False):
-    nlen, name = parse_name(data, offset)
-    if not question:
-        """DNS answer"""
-        record_type, record_class, record_ttl, record_rdlength = struct.unpack(
-            '!HHiH', data[offset + nlen:offset + nlen + 10]
-        )
-        ip = parse_ip(record_type, data, record_rdlength, offset + nlen + 10)
-        return nlen + 10 + record_rdlength, \
-            (name, ip, record_type, record_class, record_ttl)
-    else:
-        """DNS question"""
-        record_type, record_class = struct.unpack(
-            '!HH', data[offset + nlen:offset + nlen + 4]
-        )
-        return nlen + 4, (name, None, record_type, record_class, None, None)
-
-
-def parse_header(data):
-    if len(data) < 12:
-        return None
-    header = struct.unpack('!HBBHHHH', data[:12])
-    res_id = header[0]
-    res_qr = header[1] & 128
-    res_tc = header[1] & 2
-    res_ra = header[2] & 128
-    res_rcode = header[2] & 15
-    # assert res_tc == 0
-    # assert res_rcode in [0, 3]
-    res_qdcount = header[3]
-    res_ancount = header[4]
-    res_nscount = header[5]
-    res_arcount = header[6]
-    return (res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount,
-            res_ancount, res_nscount, res_arcount)
-
-
-def prase_response(data):
-    """parse the DNS response"""
-    try:
-        if len(data) < 12:
-            return
-        header = parse_header(data)
-        if not header:
-            return
-        res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount, \
-            res_ancount, res_nscount, res_arcount = header
-
-        qds = []
-        ans = []
-        offset = 12
-        for i in range(0, res_qdcount):
-            l, r = parse_record(data, offset, True)
-            offset += l
-            qds.append(r)
-        for i in range(0, res_ancount):
-            l, r = parse_record(data, offset)
-            offset += l
-            ans.append(r)
-        for i in range(0, res_nscount):
-            l, r = parse_record(data, offset)
-            offset += l
-        for i in range(0, res_arcount):
-            l, r = parse_record(data, offset)
-            offset += l
-        if qds:
-            return {
-                'hostname': qds[0][0],
-                'questions': [{'addr': a[1], 'type': a[2], 'class': a[3]}
-                              for a in qds if a],
-                'answers': [{'addr': a[1], 'type': a[2], 'class': a[3]}
-                            for a in ans if a],
-            }
-    except Exception as e:
-        shell.print_exception(e)
+    def _parse_ip(self, rtype, length, offset):
+        if rtype == TYPE.A:
+            return socket.inet_ntop(socket.AF_INET, self.data[offset:offset + length])
+        elif rtype == TYPE.AAAA:
+            return socket.inet_ntop(socket.AF_INET6, self.data[offset:offset + length])
+        elif rtype in [TYPE.CNAME, TYPE.NS]:
+            return self._parse_name(offset)[1]
+        else:
+            return self.data[offset:offset + length]
 
 
 class Socket(socket.socket):
@@ -273,7 +281,7 @@ class Socket(socket.socket):
         data, addr = self.recvfrom(1024)
         if addr[0] not in self._servers:
             return
-        return prase_response(data)
+        return Response(data)
 
 
 def load_resolv_conf(path='/etc/resolv.conf'):

@@ -32,8 +32,8 @@ class DNSTestCase(unittest.TestCase):
         sock = dns.Socket(servers)
         sock.send_dns_request(hostname)
         response = sock.recv_dns_response()
-        self.assertTrue(response['hostname'] == hostname)
-        self.assertTrue(len(response['answers']) > 0)
+        self.assertTrue(response.hostname == hostname)
+        self.assertTrue(len(response.answers) > 0)
         sock.close()
 
 

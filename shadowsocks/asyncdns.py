@@ -89,10 +89,10 @@ class DNSResolver(object):
             del self._hostname_status[hostname]
 
     def _handle_response(self, response):
-        if response:
-            hostname = response['hostname']
+        if response.is_valid():
+            hostname = response.hostname
             ip = None
-            for answer in response['answers']:
+            for answer in response.answers:
                 if answer['type'] in (dns.TYPE.A, dns.TYPE.AAAA) and \
                         answer['class'] == dns.CLASS.IN:
                     ip = answer['addr']
@@ -105,7 +105,7 @@ class DNSResolver(object):
                 self._cache[hostname] = ip
                 self._call_callback(hostname, ip)
             elif self._hostname_status.get(hostname, None) == STATUS_IPV6:
-                for question in response['questions']:
+                for question in response.questions:
                     if question['type'] == dns.TYPE.AAA:
                         self._call_callback(hostname, None)
                         break
