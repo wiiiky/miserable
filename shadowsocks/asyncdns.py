@@ -62,7 +62,6 @@ class DNSResolver(object):
 
     def _refresh(self):
         # create or refresh DNS socket
-        # TODO when dns server is IPv6
         self._sock = dns.Socket(self._servers)
         self._sock.setblocking(False)
         self._loop.add(self._sock, eventloop.POLL_IN, self)

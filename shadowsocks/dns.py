@@ -108,28 +108,41 @@ class CLASS:
     HS = 4
 
 
-def build_hostname(hostname):
-    hostname = common.to_bytes(hostname)
-    address = hostname.strip(b'.')
-    labels = hostname.split(b'.')
-    results = []
-    for label in labels:
-        l = len(label)
-        if l > 63:
-            return None
-        results.append(common.chr(l))
-        results.append(label)
-    results.append(b'\0')
-    return b''.join(results)
+class Request(object):
+    """DNS request"""
 
+    def __init__(self, hostname, qtype):
+        self.hostname = hostname
+        self.qtype = qtype
+        self.data = None
 
-def build_request(hostname, qtype):
-    """build the DNS request package"""
-    mid = os.urandom(2)
-    header = struct.pack('!BBHHHH', 1, 0, 1, 0, 0, 0)
-    addr = build_hostname(hostname)
-    qtype_qclass = struct.pack('!HH', qtype, CLASS.IN)
-    return mid + header + addr + qtype_qclass
+    @property
+    def bytes(self):
+        if not self.data:
+            self.data = self._build_package()
+        return self.data
+
+    def _build_hostname(self):
+        hostname = common.to_bytes(self.hostname)
+        address = hostname.strip(b'.')
+        labels = hostname.split(b'.')
+        results = []
+        for label in labels:
+            l = len(label)
+            if l > 63:
+                return None
+            results.append(common.chr(l))
+            results.append(label)
+        results.append(b'\0')
+        return b''.join(results)
+
+    def _build_package(self):
+        """build the DNS request package"""
+        mid = os.urandom(2)
+        header = struct.pack('!BBHHHH', 1, 0, 1, 0, 0, 0)
+        addr = self._build_hostname()
+        qtype_qclass = struct.pack('!HH', self.qtype, CLASS.IN)
+        return mid + header + addr + qtype_qclass
 
 
 def parse_ip(rtype, data, length, offset):
@@ -244,15 +257,17 @@ def prase_response(data):
 
 class Socket(socket.socket):
     """UDP socket for sending DNS request & receiving DNS response"""
+
     def __init__(self, servers):
         self._servers = servers if hasattr(servers, '__iter__') else [servers]
+        # TODO when dns server is IPv6
         super(Socket, self).__init__(socket.AF_INET, socket.SOCK_DGRAM,
                                      socket.SOL_UDP)
 
     def send_dns_request(self, hostname, qtype=TYPE.A):
-        pkg = build_request(hostname, qtype)
+        req = Request(hostname, qtype)
         for server in self._servers:
-            self.sendto(pkg, (server, 53))
+            self.sendto(req.bytes, (server, 53))
 
     def recv_dns_response(self):
         data, addr = self.recvfrom(1024)
