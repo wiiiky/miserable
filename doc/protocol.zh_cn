@@ -20,7 +20,7 @@ UPSTREAM
 DOWNSTREAM
     server ==> remote ==> local ==> client
 
-如上图所示，client和local有数据交互、local和remote有数据交互、remote和server有数据交互。
+如上所示，client和local有数据交互、local和remote有数据交互、remote和server有数据交互。
 因为server不会感知到SS的存在，因此remote和server直接的数据交互一定是正常的数据流。
 
 而client到local、local到remote之间需要定义相关的通信协议。
@@ -34,5 +34,27 @@ DOWNSTREAM
 
 CLIENT <==> LOCAL   【TCP】
 
-LOCAL <==> REMOTE   【TCP】
+    0. local启动并监听指定端口号
+    1. client向local发起连接，此时进入INIT状态
+    2. client向local发送初始化数据\x05\x01\x00，local向client返回\x05\x00表示初始化成功
+        * 代码中显示client可以发送任意的初始化数据，local并不检查，但wireshark显示它总是\x05\x01\x00
+    3. client向local发送已\x05\x01\x00开始后面跟着
+        +--------------+---------------------+------------------+----------+
+        | Address Type | Destination Address | Destination Port |   Data   |
+        +--------------+---------------------+------------------+----------+
+        |      1       |       Variable      |         2        | Variable |
+        +--------------+---------------------+------------------+----------+
+        在这里\x05表示版本为5，\x01表示连接服务器请求，\x00暂时未知。
+        Address Type可以是1(IPv4), 4(IPv6), 3(域名)；
+        如果是IPv4地址，则Destination Address占用4个字节，
+        如果是IPv6地址，则Destination Address占用16个字节，
+        如果是域名，则Destination Address已一个表示域名长度字节开始后面紧跟域名，因此域名最长为255字节。
+        Destination Port是两个字节的端口号。
+        Data为空。
+        
+        发起对www.google.com连接的请求数据如下
+        05 01 00 03 0e 77 77 77 2e 67 6f 6f 67 6c 65 2e    .....www.google.
+        63 6f 6d 01 bb                                     com..
 
+        前三个字节是命令字段05 01 00，03表示这是一个域名，0e即14表示的是www.google.com的长度
+        后面的十四个字节则是www.google.com的二进制形式。最后的两个字节01 bb表示端口号443。
