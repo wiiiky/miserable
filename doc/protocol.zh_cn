@@ -1,0 +1,38 @@
+本文描述Shadowsocks的通信协议。
+
+
+我在网上很难找到Shadowsocks（以下简称为SS）的协议说明，唯一找到的是https://shadowsocks.org/en/spec/protocol.html。
+而且也不详细。因此我自己利用Wireshark结合SS的源代码进行解析，并将解析的结果记录在此。
+
+定义
+    client是用户程序，如浏览器；
+    local是本地运行的SS代理，即sslocal；
+    remote是SS的服务器，即sserver；
+    server是客户程序真正请求链接的服务器，如www.google.com。
+    
+    upstream上行流，表示从client到server的数据流
+    downstream下行流，表示从server到client的数据流
+
+
+UPSTREAM
+    client ==> local ==> remote ==> server
+
+DOWNSTREAM
+    server ==> remote ==> local ==> client
+
+如上图所示，client和local有数据交互、local和remote有数据交互、remote和server有数据交互。
+因为server不会感知到SS的存在，因此remote和server直接的数据交互一定是正常的数据流。
+
+而client到local、local到remote之间需要定义相关的通信协议。
+另外SS支持TCP和UDP，而因为TCP和UDP的特点，也需要有不同的通信协议。
+因此SS的通信协议可以分为四个部分，它们分别是
+    client/local的TCP协议
+    local/remote的TCP协议
+    client/local的UDP协议
+    local/remote的UDP协议
+
+
+CLIENT <==> LOCAL   【TCP】
+
+LOCAL <==> REMOTE   【TCP】
+
