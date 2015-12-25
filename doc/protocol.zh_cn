@@ -33,11 +33,10 @@ DOWNSTREAM
 
 
 CLIENT <==> LOCAL   【TCP】
-
-    0. local启动并监听指定端口号
-    1. client向local发起连接，此时进入INIT状态
-    2. client向local发送初始化数据\x05\x01\x00，local向client返回\x05\x00表示初始化成功
-        * 代码中显示client可以发送任意的初始化数据，local并不检查，但wireshark显示它总是\x05\x01\x00
+    0. local启动并监听指定端口号。
+    1. client向local发起连接。
+    2. client向local发送初始化数据\x05\x01\x00，local向client返回\x05\x00表示初始化成功。
+        * 代码中显示client可以发送任意的初始化数据，local并不检查，但wireshark显示它总是\x05\x01\x00。
     3. client向local发送已\x05\x01\x00开始后面跟着
         +--------------+---------------------+------------------+----------+
         | Address Type | Destination Address | Destination Port |   Data   |
@@ -52,11 +51,11 @@ CLIENT <==> LOCAL   【TCP】
         Destination Port是两个字节的端口号。
         Data为空。
         
-        发起对www.google.com连接的请求数据如下
+        发起对www.google.com连接的请求数据如下：
         05 01 00 03 0e 77 77 77 2e 67 6f 6f 67 6c 65 2e    .....www.google.
         63 6f 6d 01 bb                                     com..
 
-        前三个字节是命令字段05 01 00，03表示这是一个域名，0e即14表示的是www.google.com的长度
+        前三个字节是命令字段05 01 00，03表示这是一个域名，0e即14表示的是www.google.com的长度。
         后面的十四个字节则是www.google.com的二进制形式。最后的两个字节01 bb表示端口号443。
     4. local收到client的连接请求后如果验证没有错误，则返回
         \x05\x00\x00\x01\x00\x00\x00\x00\x10\x10
@@ -64,3 +63,8 @@ CLIENT <==> LOCAL   【TCP】
        在此之后client和local的数据交互都是正常的TCP数据流，没有特殊字段也不需要加密。
 
 LOCAL <==> REMOTE   【TCP】
+    0. remote启动并监听指定端口号。
+    1. local向remote发起链接。
+    2. local向remote转发client的连接服务器的请求，格式如CLIENT <==> LOCAL【TCP】一节的3所描述，数据经过加密。
+    3. remote解密连接请求，并连接连接指定的server。
+    4. local和server经过加密转化数据。
