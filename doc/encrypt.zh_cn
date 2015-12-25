@@ -1,0 +1,3 @@
+本文描述Shadowsocks的加密方式，数据加密只用在local和remote的通信。
+
+TODO
