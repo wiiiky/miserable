@@ -58,3 +58,9 @@ CLIENT <==> LOCAL   【TCP】
 
         前三个字节是命令字段05 01 00，03表示这是一个域名，0e即14表示的是www.google.com的长度
         后面的十四个字节则是www.google.com的二进制形式。最后的两个字节01 bb表示端口号443。
+    4. local收到client的连接请求后如果验证没有错误，则返回
+        \x05\x00\x00\x01\x00\x00\x00\x00\x10\x10
+       同时向remote发起链接。
+       在此之后client和local的数据交互都是正常的TCP数据流，没有特殊字段也不需要加密。
+
+LOCAL <==> REMOTE   【TCP】
