@@ -28,9 +28,12 @@ def errno_from_exception(e):
 
 class BaseException(Exception):
 
+    def __init__(self, msg):
+        self._message = msg
+
     @property
     def message(self):
-        return u''
+        return self._message
 
     def __str__(self):
         return self.message
@@ -39,19 +42,26 @@ class BaseException(Exception):
 class InvalidAddressException(BaseException):
 
     def __init__(self, address, port):
-        self._address = address
-        self._port = port
-
-    @property
-    def message(self):
-        return u'%s:%s is an invalid address!' % (self._address, self._port)
+        msg = u'%s:%s is an invalid address!' % (address, port)
+        super(InvalidAddressException, self).__init__(msg)
 
 
 class UnsupportFeatureException(BaseException):
 
     def __init__(self, feature):
-        self._feature = feature
+        msg = u'%s is not supported by you system!' % (feature, )
+        super(UnsupportFeatureException, self).__init__(msg)
 
-    @property
-    def message(self):
-        return u'%s is not supported by you system!' % (self._feature, )
+
+class InvalidSockVersionException(BaseException):
+
+    def __init__(self, version):
+        msg = u'invalid SOCKS version %s' % (version, )
+        super(InvalidSockVersionException, self).__init__(msg)
+
+
+class UnknownCommandException(BaseException):
+
+    def __init__(self, cmd):
+        msg = u'unknown command %s' % cmd
+        super(UnknownCommandException, self).__init__(msg)

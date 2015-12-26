@@ -17,12 +17,16 @@
 
 import errno
 import socket
+import struct
 import logging
 import traceback
 from shadowsocks.exceptions import *
 from shadowsocks.eventloop import *
+from shadowsocks.decorator import *
 from shadowsocks.encrypt import Encryptor
 from shadowsocks.shell import print_exception
+from shadowsocks.common import parse_header
+
 
 # SOCKS command definition
 class SOCKS5Command(object):
@@ -31,7 +35,7 @@ class SOCKS5Command(object):
     UDP_ASSOCIATE = 3
 
 
-class ClienState(object):
+class ClientState(object):
     INIT = 0            # waiting for hello message from client
     ADDR = 1
     UDP_ASSOC = 2
@@ -40,19 +44,37 @@ class ClienState(object):
     STREAM = 5
     DESTROYED = -1
 
+
 class Client(object):
 
-    def __init__(self, sock, addr, encryptor, close_notify):
+    def __init__(self, sock, addr, loop, encryptor, manager):
         self._socket = sock
         self._address = addr
         self._state = ClienState.INIT
         self._encryptor = encryptor
-        self._close_notify = close_notify
+        self._loop = loop
         self._bufsize = 4096
         self._sendbuf = b''
+        self._manager = manager
 
         self._socket.setblocking(False)
         self._socket.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+
+        self._loop.add(self._socket, POLL_IN | POLL_ERR, manager)
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, state):
+        self._state = state
+        events = POLL_ERR
+        if state in (ClientState.INIT, ClienState.ADDR):
+            events |= POLL_IN
+        elif state in (ClientState.STREAM, ):
+            events |= POLL_IN | POLL_OUT
+        self._loop.modify(self._socket, events)
 
     @property
     def socket(self):
@@ -62,20 +84,22 @@ class Client(object):
     def address(self):
         return self._address
 
+    @return_val_if_wouldblock(None)
     def read(self):
         return self._socket.recv(self._bufsize)
 
+    @return_val_if_wouldblock(0)
     def write(self, data=b''):
         self._sendbuf += data
-        total = len(self._sendbuf)
-        n = self._socket.send(self._sendbuf)
-        self._sendbuf = self._sendbuf[n:]
-        return n
+        if self._sendbuf:
+            total = len(self._sendbuf)
+            n = self._socket.send(self._sendbuf)
+            self._sendbuf = self._sendbuf[n:]
+            return n
+        return 0
 
     def close(self):
         self._socket.close()
-
-
 
 
 class TCPTransfer(object):
@@ -83,14 +107,12 @@ class TCPTransfer(object):
     def __init__(self, config, loop, sock, addr, dns_resolver):
         self._encryptor = Encryptor(config['password'], config['method'])
         self._loop = loop
-        self._client = Client(sock, addr, self._encryptor)
+        self._client = Client(sock, addr, loop, self._encryptor)
         self._remote = None
         self._dns_resolver = dns_resolver
 
-
     def start(self):
         self._loop.add(self._client.socket, POLL_IN | POLL_ERR, self)
-
 
     def handle_event(self, sock, fd, event):
         if sock == self._client.socket:
@@ -99,11 +121,58 @@ class TCPTransfer(object):
                 return
             self._handle_client(event)
 
-
+    @stop_transfer_if_fail
     def _handle_client(self, event):
-        if self._client.state == ClienState.INIT:
+        data = None
+        if event & POLL_IN:
+            data = self._client.read()
 
+        if self._client.state in (ClientState.INIT, ClientState.ADDR)\
+                and not data:
+            self.stop(info='client %s closed' % self._client.address)
+            return
 
+        if self._client.state == ClientState.INIT:
+            # Shall we verify the HELLO message from client?
+            self._client.write(b'\x05\00')  # HELLO
+            self._client.state = ClientState.ADDR
+        elif self._client.state == ClientState.ADDR:
+            vsn = ord(data[0])
+            if vsn != '\x05':
+                raise InvalidSockVersionException(vsn)
+            cmd = ord(data[1])
+            if cmd == SOCKS5Command.UDP_ASSOCIATE:
+                logging.debug('UDP associate')
+                family = self._client.socket.family
+                if family == socket.AF_INET6:
+                    header = b'\x05\x00\x00\x04'
+                else:
+                    header = b'\x05\x00\x00\x01'
+                addr, port = self._client.address
+                addr_to_send = socket.inet_pton(family, addr)
+                port_to_send = struct.pack('!H', port)
+                self._client.write(header + addr_to_send + port_to_send)
+                self._client.stage = STAGE_UDP_ASSOC
+                # just wait for the client to disconnect
+                return
+            elif cmd != SOCKS5Command.CONNECT:
+                raise UnknownCommandException(cmd)
+            else:
+                # just trim VER CMD RSV
+                data = data[3:]
+            addrtype, remote_addr, remote_port, length = parse_header(data)
+            logging.info('connecting %s:%d from %s:%d' %
+                         (remote_addr, remote_port, self._client.address[0],
+                          self._client.address[1]))
+            remote_address = (remote_addr, remote_port)
+            # forward address to remote
+            self._client.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x10\x10')
+            self._client.state = ClientState.DNS
+#            data_to_send = self._encryptor.encrypt(data)
+#            self._data_to_write_to_remote.append(data_to_send)
+#            # notice here may go into _handle_dns_resolved directly
+#            self._dns_resolver.resolve(self._chosen_server[0],
+#                                       self._handle_dns_resolved)
 
     def stop(self, info=None, warning=None):
         if info:
