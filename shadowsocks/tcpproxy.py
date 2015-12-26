@@ -45,22 +45,61 @@ class ClientState(object):
     DESTROYED = -1
 
 
-class Client(object):
+class Peer(object):
 
-    def __init__(self, sock, addr, loop, encryptor, manager):
+    def __init__(self, sock, addr, loop, encryptor=None):
         self._socket = sock
         self._address = addr
-        self._state = ClienState.INIT
         self._encryptor = encryptor
-        self._loop = loop
         self._bufsize = 4096
         self._sendbuf = b''
-        self._manager = manager
+        self._connected = False
+        self._loop = loop
 
         self._socket.setblocking(False)
         self._socket.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
 
-        self._loop.add(self._socket, POLL_IN | POLL_ERR, manager)
+    @property
+    def connected(self):
+        return self._connected
+
+    @connected.setter
+    def connected(self, value):
+        self._connected = bool(value)
+
+    @property
+    def socket(self):
+        return self._socket
+
+    @property
+    def address(self):
+        return self._address
+
+    @return_val_if_wouldblock(None)
+    def read(self):
+        if not self._connected:
+            return None
+        return self._socket.recv(self._bufsize)
+
+    @return_val_if_wouldblock(0)
+    def write(self, data=b''):
+        self._sendbuf += data
+        if self._sendbuf and self._connected:
+            total = len(self._sendbuf)
+            n = self._socket.send(self._sendbuf)
+            self._sendbuf = self._sendbuf[n:]
+            return n
+        return 0
+
+    def close(self):
+        self._socket.close()
+
+
+class Client(Peer):
+
+    def __init__(self, sock, addr, loop, encryptor=None):
+        super(Client, self).__init__(self, sock, addr, loop, encryptor)
+        self._connected = True
 
     @property
     def state(self):
@@ -76,30 +115,11 @@ class Client(object):
             events |= POLL_IN | POLL_OUT
         self._loop.modify(self._socket, events)
 
-    @property
-    def socket(self):
-        return self._socket
 
-    @property
-    def address(self):
-        return self._address
+class Remote(Peer):
 
-    @return_val_if_wouldblock(None)
-    def read(self):
-        return self._socket.recv(self._bufsize)
-
-    @return_val_if_wouldblock(0)
-    def write(self, data=b''):
-        self._sendbuf += data
-        if self._sendbuf:
-            total = len(self._sendbuf)
-            n = self._socket.send(self._sendbuf)
-            self._sendbuf = self._sendbuf[n:]
-            return n
-        return 0
-
-    def close(self):
-        self._socket.close()
+    def __init__(self, sock, addr, loop, encryptor=None):
+        super(Remote, self).__init__(self, sock, addr, loop, encryptor)
 
 
 class TCPTransfer(object):
@@ -120,6 +140,11 @@ class TCPTransfer(object):
                 self.stop(info='client %s error' % self._client.address)
                 return
             self._handle_client(event)
+        elif sock == self._remote.socket:
+            if event & POLL_ERR:
+                self.stop(info='remote %s error' % self._remote.address)
+                return
+            self._handle_remote(event)
 
     @stop_transfer_if_fail
     def _handle_client(self, event):
@@ -173,6 +198,9 @@ class TCPTransfer(object):
 #            # notice here may go into _handle_dns_resolved directly
 #            self._dns_resolver.resolve(self._chosen_server[0],
 #                                       self._handle_dns_resolved)
+
+    def _handle_remote(self, event):
+        pass
 
     def stop(self, info=None, warning=None):
         if info:
