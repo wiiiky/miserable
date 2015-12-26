@@ -666,7 +666,7 @@ class TCPRelay(object):
         # handle events and dispatch to handlers
         if sock:
             logging.log(shell.VERBOSE_LEVEL, 'fd %d %s', fd,
-                        eventloop.EVENT_NAMES.get(event, event))
+                        eventloop.get_event_display_name(event))
         if sock == self._server_socket:
             if event & eventloop.POLL_ERR:
                 # TODO

@@ -33,7 +33,7 @@ from shadowsocks import shell
 
 
 __all__ = ['EventLoop', 'POLL_NULL', 'POLL_IN', 'POLL_OUT', 'POLL_ERR',
-           'POLL_HUP', 'POLL_NVAL', 'EVENT_NAMES']
+           'POLL_HUP', 'POLL_NVAL', 'get_event_display_name']
 
 POLL_NULL = 0x00
 POLL_IN = 0x01
@@ -42,15 +42,16 @@ POLL_ERR = 0x08
 POLL_HUP = 0x10
 POLL_NVAL = 0x20
 
-
-EVENT_NAMES = {
-    POLL_NULL: 'POLL_NULL',
-    POLL_IN: 'POLL_IN',
-    POLL_OUT: 'POLL_OUT',
-    POLL_ERR: 'POLL_ERR',
-    POLL_HUP: 'POLL_HUP',
-    POLL_NVAL: 'POLL_NVAL',
-}
+def get_event_display_name(event):
+    names = {
+        POLL_NULL: 'POLL_NULL',
+        POLL_IN: 'POLL_IN',
+        POLL_OUT: 'POLL_OUT',
+        POLL_ERR: 'POLL_ERR',
+        POLL_HUP: 'POLL_HUP',
+        POLL_NVAL: 'POLL_NVAL',
+    }
+    return names.get(event, event);
 
 # we check timeouts every TIMEOUT_PRECISION seconds
 TIMEOUT_PRECISION = 10
