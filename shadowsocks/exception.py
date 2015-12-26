@@ -34,6 +34,10 @@ def exception_wouldblock(e):
         (errno.ETIMEDOUT, errno.EAGAIN, errno.EWOULDBLOCK)
 
 
+def exception_inprogress(e):
+    return errno_from_exception(e) == errno.EINPROGRESS
+
+
 class BaseException(Exception):
 
     def __init__(self, msg):

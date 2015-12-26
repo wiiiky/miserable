@@ -27,10 +27,12 @@ import signal
 try:
     from shadowsocks import shell, daemon, eventloop, \
         tcprelay, udprelay, asyncdns
+    from shadowsocks.tcp.proxy import Proxy as TCPProxy
 except ImportError as e:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
     from shadowsocks import shell, daemon, eventloop, tcprelay, \
-        udprelay, asyncdns, tcpproxy
+        udprelay, asyncdns
+    from shadowsocks.tcp.proxy import Proxy as TCPProxy
 
 
 def main():
@@ -50,22 +52,18 @@ def main():
                      (config['local_address'], config['local_port']))
 
         dns_resolver = asyncdns.DNSResolver()
-        tcp_server = tcpproxy.TCPProxy(config, dns_resolver)
+        tcp_server = TCPProxy(config, dns_resolver)
         udp_server = udprelay.UDPRelay(config, dns_resolver, True)
         loop = eventloop.EventLoop()
         dns_resolver.add_to_loop(loop)
         tcp_server.add_to_loop(loop)
         udp_server.add_to_loop(loop)
 
-        def handler(signum, _):
-            logging.warn('received SIGQUIT, doing graceful shutting down..')
+        def sigint_handler(signum, _):
+            logging.warn('received SIGINT, doing graceful shutting down..')
             tcp_server.close(next_tick=True)
             udp_server.close(next_tick=True)
-        signal.signal(getattr(signal, 'SIGQUIT', signal.SIGTERM), handler)
-
-        def int_handler(signum, _):
-            sys.exit(1)
-        signal.signal(signal.SIGINT, int_handler)
+        signal.signal(signal.SIGINT, sigint_handler)
 
         daemon.set_user(config['user'])
         loop.run()
