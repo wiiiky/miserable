@@ -41,8 +41,7 @@ class ClientState(object):
     UDP_ASSOC = 2
     DNS = 3
     CONNECTING = 4
-    STREAM = 5
-    DESTROYED = -1
+    CONNTED = 5
 
 
 class Peer(object):
@@ -53,23 +52,31 @@ class Peer(object):
         self._encryptor = encryptor
         self._bufsize = 4096
         self._sendbuf = b''
-        self._connected = False
         self._loop = loop
 
-        self._socket.setblocking(False)
-        self._socket.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+        if self._socket:
+            self._socket.setblocking(False)
+            self._socket.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+
+    def encrypt(self, data):
+        return self._encryptor.encrypt(data)
+
+    def decrypt(self, data):
+        return self._encryptor.decrypt(data)
 
     @property
     def connected(self):
-        return self._connected
-
-    @connected.setter
-    def connected(self, value):
-        self._connected = bool(value)
+        return self._socket is not None
 
     @property
     def socket(self):
         return self._socket
+
+    @property.setter
+    def socket(self, sock):
+        self._socket = sock
+        self._socket.setblocking(False)
+        self._socket.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
 
     @property
     def address(self):
@@ -100,6 +107,7 @@ class Client(Peer):
     def __init__(self, sock, addr, loop, encryptor=None):
         super(Client, self).__init__(self, sock, addr, loop, encryptor)
         self._connected = True
+        self._state = ClienState.INIT
 
     @property
     def state(self):
@@ -107,6 +115,8 @@ class Client(Peer):
 
     @state.setter
     def state(self, state):
+        if self._state == state:
+            return
         self._state = state
         events = POLL_ERR
         if state in (ClientState.INIT, ClienState.ADDR):
@@ -116,19 +126,67 @@ class Client(Peer):
         self._loop.modify(self._socket, events)
 
 
+class RemoteState(object):
+
+    DNS = 1
+    CONNECTING = 2
+    CONNECTED = 3
+
+
 class Remote(Peer):
 
     def __init__(self, sock, addr, loop, encryptor=None):
         super(Remote, self).__init__(self, sock, addr, loop, encryptor)
+        self._state = DNS
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, state):
+        if self._state == state:
+            return
+        self._state = state
+
+        if not self.connected:
+            return
+        events = POLL_ERR
+        if state in (RemoteState.DNS, RemoteState.CONNECTING):
+            events |= POLL_IN
+        elif state in (RemoteState.CONNECTED, ):
+            events |= POLL_IN | POLL_OUT
+        self._loop.modify(self._socket, events)
+
+    @return_val_if_wouldblock(None)
+    def read(self):
+        data = super(Remote, self).read()
+        if data:
+            data = self.decrypt(data)
+        return data
+
+    @return_val_if_wouldblock(0)
+    def write(self, data=b''):
+        if data:
+            data = self.encrypt(data)
+        return super(Remote, self).write(data)
 
 
 class TCPTransfer(object):
 
     def __init__(self, config, loop, sock, addr, dns_resolver):
-        self._encryptor = Encryptor(config['password'], config['method'])
+        self._cfg_password = config['password']
+        self._cfg_method = config['method']
+        self._cfg_server = config['server']
+        self._cfg_server_port = config['server_port']
+        self._cfg_verbose = config['verbose']
+
+        self._encryptor = Encryptor(self._cfg_password, self._cfg_method)
         self._loop = loop
         self._client = Client(sock, addr, loop, self._encryptor)
+        self._remote_address = (self._cfg_server, self._cfg_server_port)
         self._remote = None
+        self._server_address = None
         self._dns_resolver = dns_resolver
 
     def start(self):
@@ -185,22 +243,51 @@ class TCPTransfer(object):
             else:
                 # just trim VER CMD RSV
                 data = data[3:]
-            addrtype, remote_addr, remote_port, length = parse_header(data)
+            addrtype, server_addr, server_addr, length = parse_header(data)
             logging.info('connecting %s:%d from %s:%d' %
-                         (remote_addr, remote_port, self._client.address[0],
+                         (server_addr, server_port, self._client.address[0],
                           self._client.address[1]))
-            remote_address = (remote_addr, remote_port)
+            self._server_address = (server_addr, server_port)
             # forward address to remote
             self._client.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x10\x10')
             self._client.state = ClientState.DNS
-#            data_to_send = self._encryptor.encrypt(data)
-#            self._data_to_write_to_remote.append(data_to_send)
-#            # notice here may go into _handle_dns_resolved directly
-#            self._dns_resolver.resolve(self._chosen_server[0],
-#                                       self._handle_dns_resolved)
+            self._remote = Remote(None, remote_address, self._loop,
+                                  self.encryptor)
+            self._remote.write(self._encryptor.encrypt(data))
+            self._dns_resolver.resolve(self._server_address[0],
+                                       self._dns_resolved)
+        elif self._client.state == ClientState.CONNECTED:
+            self._remote.write(data)
 
+    @stop_transfer_if_fail
     def _handle_remote(self, event):
-        pass
+        data = None
+        if event & POLL_IN:
+            data = self._remote.read()
+        if data:
+            self._client.write(data)
+        if event & POLL_OUT:
+            self._remote.write()
+            self._remote.state = RemoteState.CONNECTED
+            self._client.state = ClientState.CONNECTED
+
+    @stop_transfer_if_fail
+    def _dns_resolved(self, result, error):
+        if error:
+            self.stop(warning=error)
+            return
+        ip = result[1]
+        port = self._remote_address[1]
+
+        addrs = socket.getaddrinfo(ip, port, 0, socket.SOCK_STREAM,
+                                   socket.SOL_TCP)
+        af, socktype, proto, canonname, sa = addrs[0]
+        sock = socket.socket(af, socktype, proto)
+        self._remote.socket = sock
+        self._remote.socket.connect((ip, port))
+        self._loop.add(self._remote.socket, POLL_ERR | eventloop.POLL_OUT,
+                       self)
+        self._remote.state = RemoteState.CONNECTING
 
     def stop(self, info=None, warning=None):
         if info:
