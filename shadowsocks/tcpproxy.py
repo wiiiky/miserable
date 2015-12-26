@@ -20,7 +20,7 @@ import socket
 import struct
 import logging
 import traceback
-from shadowsocks.exceptions import *
+from shadowsocks.exception import *
 from shadowsocks.eventloop import *
 from shadowsocks.decorator import *
 from shadowsocks.encrypt import Encryptor
@@ -41,7 +41,7 @@ class ClientState(object):
     UDP_ASSOC = 2
     DNS = 3
     CONNECTING = 4
-    CONNTED = 5
+    CONNECTED = 5
 
 
 class Peer(object):
@@ -53,6 +53,7 @@ class Peer(object):
         self._bufsize = 4096
         self._sendbuf = b''
         self._loop = loop
+        self._events = 0
 
         if self._socket:
             self._socket.setblocking(False)
@@ -64,6 +65,10 @@ class Peer(object):
     def decrypt(self, data):
         return self._encryptor.decrypt(data)
 
+    def start(self, events, manager):
+        self._events = events
+        self._loop.add(self._socket, self._events, manager)
+
     @property
     def connected(self):
         return self._socket is not None
@@ -72,7 +77,7 @@ class Peer(object):
     def socket(self):
         return self._socket
 
-    @property.setter
+    @socket.setter
     def socket(self, sock):
         self._socket = sock
         self._socket.setblocking(False)
@@ -84,19 +89,30 @@ class Peer(object):
 
     @return_val_if_wouldblock(None)
     def read(self):
-        if not self._connected:
+        if not self.connected:
             return None
         return self._socket.recv(self._bufsize)
 
-    @return_val_if_wouldblock(0)
     def write(self, data=b''):
+        data = data or b''
         self._sendbuf += data
-        if self._sendbuf and self._connected:
-            total = len(self._sendbuf)
-            n = self._socket.send(self._sendbuf)
-            self._sendbuf = self._sendbuf[n:]
-            return n
-        return 0
+        if not self.connected:
+            return
+        if self._sendbuf:
+            try:
+                total = len(self._sendbuf)
+                n = self._socket.send(self._sendbuf)
+                self._sendbuf = self._sendbuf[n:]
+            except (OSError, IOError) as e:
+                if not exception_wouldblock(e):
+                    raise e
+
+        if self._sendbuf and not (self._events & POLL_OUT):
+            self._events |= POLL_OUT
+            self._loop.modify(self._socket, self._events)
+        elif not self._sendbuf and (self._events & POLL_OUT):
+            self._events ^= POLL_OUT
+            self._loop.modify(self._socket, self._events)
 
     def close(self):
         self._socket.close()
@@ -105,9 +121,8 @@ class Peer(object):
 class Client(Peer):
 
     def __init__(self, sock, addr, loop, encryptor=None):
-        super(Client, self).__init__(self, sock, addr, loop, encryptor)
-        self._connected = True
-        self._state = ClienState.INIT
+        super(Client, self).__init__(sock, addr, loop, encryptor)
+        self._state = ClientState.INIT
 
     @property
     def state(self):
@@ -115,15 +130,7 @@ class Client(Peer):
 
     @state.setter
     def state(self, state):
-        if self._state == state:
-            return
         self._state = state
-        events = POLL_ERR
-        if state in (ClientState.INIT, ClienState.ADDR):
-            events |= POLL_IN
-        elif state in (ClientState.STREAM, ):
-            events |= POLL_IN | POLL_OUT
-        self._loop.modify(self._socket, events)
 
 
 class RemoteState(object):
@@ -136,8 +143,16 @@ class RemoteState(object):
 class Remote(Peer):
 
     def __init__(self, sock, addr, loop, encryptor=None):
-        super(Remote, self).__init__(self, sock, addr, loop, encryptor)
-        self._state = DNS
+        super(Remote, self).__init__(sock, addr, loop, encryptor)
+        self._state = RemoteState.DNS
+
+    def connect(self, addr):
+        try:
+            return self._socket.connect(addr)
+        except (OSError, IOError) as e:
+            if errno_from_exception(e) == errno.EINPROGRESS:
+                return
+            raise e
 
     @property
     def state(self):
@@ -145,27 +160,14 @@ class Remote(Peer):
 
     @state.setter
     def state(self, state):
-        if self._state == state:
-            return
         self._state = state
 
-        if not self.connected:
-            return
-        events = POLL_ERR
-        if state in (RemoteState.DNS, RemoteState.CONNECTING):
-            events |= POLL_IN
-        elif state in (RemoteState.CONNECTED, ):
-            events |= POLL_IN | POLL_OUT
-        self._loop.modify(self._socket, events)
-
-    @return_val_if_wouldblock(None)
     def read(self):
         data = super(Remote, self).read()
         if data:
             data = self.decrypt(data)
         return data
 
-    @return_val_if_wouldblock(0)
     def write(self, data=b''):
         if data:
             data = self.encrypt(data)
@@ -190,17 +192,17 @@ class TCPTransfer(object):
         self._dns_resolver = dns_resolver
 
     def start(self):
-        self._loop.add(self._client.socket, POLL_IN | POLL_ERR, self)
+        self._client.start(POLL_IN | POLL_ERR, self)
 
     def handle_event(self, sock, fd, event):
         if sock == self._client.socket:
             if event & POLL_ERR:
-                self.stop(info='client %s error' % self._client.address)
+                self.stop(info='client %s:%s error' % self._client.address)
                 return
             self._handle_client(event)
         elif sock == self._remote.socket:
             if event & POLL_ERR:
-                self.stop(info='remote %s error' % self._remote.address)
+                self.stop(info='remote %s:%s error' % self._remote.address)
                 return
             self._handle_remote(event)
 
@@ -209,10 +211,13 @@ class TCPTransfer(object):
         data = None
         if event & POLL_IN:
             data = self._client.read()
+            if data == b'':
+                self.stop(info='client %s:%s closed' % self._client.address)
+                return
 
         if self._client.state in (ClientState.INIT, ClientState.ADDR)\
                 and not data:
-            self.stop(info='client %s closed' % self._client.address)
+            self.stop(info='client %s:%s closed' % self._client.address)
             return
 
         if self._client.state == ClientState.INIT:
@@ -220,10 +225,10 @@ class TCPTransfer(object):
             self._client.write(b'\x05\00')  # HELLO
             self._client.state = ClientState.ADDR
         elif self._client.state == ClientState.ADDR:
-            vsn = ord(data[0])
-            if vsn != '\x05':
+            vsn = data[0]
+            cmd = data[1]
+            if vsn != 5:
                 raise InvalidSockVersionException(vsn)
-            cmd = ord(data[1])
             if cmd == SOCKS5Command.UDP_ASSOCIATE:
                 logging.debug('UDP associate')
                 family = self._client.socket.family
@@ -243,7 +248,7 @@ class TCPTransfer(object):
             else:
                 # just trim VER CMD RSV
                 data = data[3:]
-            addrtype, server_addr, server_addr, length = parse_header(data)
+            addrtype, server_addr, server_port, length = parse_header(data)
             logging.info('connecting %s:%d from %s:%d' %
                          (server_addr, server_port, self._client.address[0],
                           self._client.address[1]))
@@ -251,21 +256,24 @@ class TCPTransfer(object):
             # forward address to remote
             self._client.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x10\x10')
             self._client.state = ClientState.DNS
-            self._remote = Remote(None, remote_address, self._loop,
-                                  self.encryptor)
-            self._remote.write(self._encryptor.encrypt(data))
-            self._dns_resolver.resolve(self._server_address[0],
+            self._remote = Remote(None, self._remote_address, self._loop,
+                                  self._encryptor)
+            self._remote.write(data)
+            self._dns_resolver.resolve(self._remote_address[0],
                                        self._dns_resolved)
-        elif self._client.state == ClientState.CONNECTED:
+        elif data and self._remote:
             self._remote.write(data)
 
     @stop_transfer_if_fail
     def _handle_remote(self, event):
-        data = None
+
         if event & POLL_IN:
             data = self._remote.read()
-        if data:
+            if data is b'':
+                self.stop(info=('remote %s:%s closed' % self._remote.address))
+                return
             self._client.write(data)
+
         if event & POLL_OUT:
             self._remote.write()
             self._remote.state = RemoteState.CONNECTED
@@ -284,9 +292,8 @@ class TCPTransfer(object):
         af, socktype, proto, canonname, sa = addrs[0]
         sock = socket.socket(af, socktype, proto)
         self._remote.socket = sock
-        self._remote.socket.connect((ip, port))
-        self._loop.add(self._remote.socket, POLL_ERR | eventloop.POLL_OUT,
-                       self)
+        self._remote.connect((ip, port))
+        self._remote.start(POLL_ERR | POLL_OUT | POLL_IN, self)
         self._remote.state = RemoteState.CONNECTING
 
     def stop(self, info=None, warning=None):
@@ -343,26 +350,18 @@ class TCPProxy(object):
 
     def handle_event(self, sock, fd, event):
         # handle events and dispatch to handlers
-        logging.debug('fd %d %s', fd, eventloop.get_event_display_name(event))
-        if event & eventloop.POLL_ERR:
+        if event & POLL_ERR:
             # TODO
             raise Exception('server_socket error')
         self._accept()
 
+    @return_val_if_wouldblock(None)
     def _accept(self):
-        try:
-            client, addr = self._server_socket.accept()
-            logging.debug('accept %s' % str(addr))
-            transfer = TCPTransfer(self._config, self._loop, client, addr,
-                                   self._dns_resolver)
-        except (OSError, IOError) as e:
-            if errno_from_exception(e) in (errno.EAGAIN, errno.EINPROGRESS,
-                                           errno.EWOULDBLOCK):
-                return
-            else:
-                print_exception(e)
-                if self._config['verbose']:
-                    traceback.print_exc()
+        client, addr = self._server_socket.accept()
+        logging.debug('accept %s' % str(addr))
+        transfer = TCPTransfer(self._config, self._loop, client, addr,
+                               self._dns_resolver)
+        transfer.start()
 
     def handle_periodic(self):
         if self._closed:
@@ -373,7 +372,7 @@ class TCPProxy(object):
                 logging.info('closed TCP port %d', self._listen_port)
             if not self._fd_to_handlers:
                 logging.info('stopping')
-                self._eventloop.stop()
+                self._loop.stop()
         self._sweep_timeout()
 
     def _sweep_timeout(self):

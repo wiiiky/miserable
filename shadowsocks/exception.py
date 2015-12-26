@@ -14,6 +14,9 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import errno
+
+
 def errno_from_exception(e):
     """Provides the errno from an Exception object.
 
@@ -24,6 +27,11 @@ def errno_from_exception(e):
     errno.
     """
     return getattr(e, 'errno', e.args[0] if e.args else None)
+
+
+def exception_wouldblock(e):
+    return errno_from_exception(e) in\
+        (errno.ETIMEDOUT, errno.EAGAIN, errno.EWOULDBLOCK)
 
 
 class BaseException(Exception):

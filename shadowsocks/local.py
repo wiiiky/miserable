@@ -30,7 +30,7 @@ try:
 except ImportError as e:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
     from shadowsocks import shell, daemon, eventloop, tcprelay, \
-        udprelay, asyncdns
+        udprelay, asyncdns, tcpproxy
 
 
 def main():
@@ -50,7 +50,7 @@ def main():
                      (config['local_address'], config['local_port']))
 
         dns_resolver = asyncdns.DNSResolver()
-        tcp_server = tcprelay.TCPRelay(config, dns_resolver, True)
+        tcp_server = tcpproxy.TCPProxy(config, dns_resolver)
         udp_server = udprelay.UDPRelay(config, dns_resolver, True)
         loop = eventloop.EventLoop()
         dns_resolver.add_to_loop(loop)

@@ -42,6 +42,7 @@ POLL_ERR = 0x08
 POLL_HUP = 0x10
 POLL_NVAL = 0x20
 
+
 def get_event_display_name(event):
     names = {
         POLL_NULL: 'POLL_NULL',
@@ -51,7 +52,7 @@ def get_event_display_name(event):
         POLL_HUP: 'POLL_HUP',
         POLL_NVAL: 'POLL_NVAL',
     }
-    return names.get(event, event);
+    return names.get(event, event)
 
 # we check timeouts every TIMEOUT_PRECISION seconds
 TIMEOUT_PRECISION = 10
