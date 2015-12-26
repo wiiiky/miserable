@@ -15,6 +15,7 @@
 # under the License.
 
 
+import time
 import socket
 import struct
 import logging
@@ -56,11 +57,24 @@ class LocalTransfer(object):
         self._remote = None
         self._server_address = None
         self._dns_resolver = dns_resolver
+        self._last_active = time.time()
+        self._closed = False
+
+    @property
+    def last_active(self):
+        return self._last_active
+
+    @property
+    def display_name(self):
+        client = '%s:%s' % self._client.address
+        server = '%s:%s' % self._server_address if self._server_address else 'None'
+        return '%s <==> %s' % (client, server)
 
     def start(self):
         self._client.start(POLL_IN | POLL_ERR, self)
 
     def handle_event(self, sock, fd, event):
+        self._last_active = time.time()
         if sock == self._client.socket:
             if event & POLL_ERR:
                 self.stop(info='client %s:%s error' % self._client.address)
@@ -118,7 +132,7 @@ class LocalTransfer(object):
             logging.info('connecting %s:%d from %s:%d' %
                          (server_addr, server_port, self._client.address[0],
                           self._client.address[1]))
-            self._server_address = (server_addr, server_port)
+            self._server_address = (str(server_addr), str(server_port))
             # forward address to remote
             self._client.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x10\x10')
             self._client.state = ClientState.DNS
@@ -164,10 +178,13 @@ class LocalTransfer(object):
         self._remote.start(POLL_ERR | POLL_OUT | POLL_IN, self)
 
     def stop(self, info=None, warning=None):
+        if self._closed:
+            return
         if info:
             logging.info(info)
         elif warning:
             logging.warning(warning)
+        self._closed = True
         self._client.close()
         if self._remote:
             self._remote.close()

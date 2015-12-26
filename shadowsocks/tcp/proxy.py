@@ -15,6 +15,7 @@
 # under the License.
 
 
+import time
 import socket
 import logging
 from shadowsocks.exception import *
@@ -54,6 +55,8 @@ class Proxy(object):
         self._server_socket = server_socket
         self._loop = None
         self._closed = False
+        self._timeout = config['timeout']
+        self._transfers = []
 
     def add_to_loop(self, loop):
         if self._loop:
@@ -78,26 +81,36 @@ class Proxy(object):
         transfer = LocalTransfer(self._config, self._loop, client, addr,
                                  self._dns_resolver)
         transfer.start()
+        self._transfers.append(transfer)
 
     def handle_periodic(self):
         if self._closed:
-            if self._server_socket:
-                self._loop.remove(self._server_socket)
-                self._server_socket.close()
-                self._server_socket = None
-                logging.info('closed TCP %s:%s' % self._address)
-            self._loop.stop()
-        self._sweep_timeout()
+            self._close()
+        self._check_timeout()
 
-    def _sweep_timeout(self):
-        """TODO"""
-        pass
+    def _check_timeout(self):
+        """
+        check timeout connections and close them
+        """
+        now = time.time()
+        transfers = []
+        for t in self._transfers:
+            if now - t.last_active > self._timeout:
+                t.stop(info='%s is timeout' % t.display_name)
+            else:
+                transfers.append(t)
+        self._transfers = transfers
 
     def close(self, next_tick=False):
-        logging.debug('TCP close')
         self._closed = True
         if not next_tick:
-            if self._loop:
-                self._loop.remove_periodic(self.handle_periodic)
-                self._loop.remove(self._server_socket)
-            self._server_socket.close()
+            self._close()
+
+    def _close(self):
+        if not self._server_socket:
+            return
+        logging.info('close TCP %s:%s' % self._address)
+        self._loop.remove(self._server_socket)
+        self._server_socket.close()
+        self._server_socket = None
+        self._loop.stop()
