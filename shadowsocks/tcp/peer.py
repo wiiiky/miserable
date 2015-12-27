@@ -101,6 +101,7 @@ class Peer(object):
         return self._socket.recv(self._bufsize)
 
     def write(self, data=b''):
+        """write data if connected or buffer data"""
         data = data or b''
         self._sendbuf += data
         if not self.connected:
@@ -115,9 +116,17 @@ class Peer(object):
                     raise e
 
         if self._sendbuf and not (self._events & POLL_OUT):
+            """
+            not all data sent,
+            monitor the POLL_OUT event so we can send them next time
+            """
             self._events |= POLL_OUT
             self._loop.modify(self._socket, self._events)
         elif not self._sendbuf and (self._events & POLL_OUT):
+            """
+            all data sent, but POLL_OUT is monitored,
+            to avoid necessary POLL_OUT event, remove POLL_OUT.
+            """
             self._events ^= POLL_OUT
             self._loop.modify(self._socket, self._events)
 
