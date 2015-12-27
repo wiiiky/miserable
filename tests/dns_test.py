@@ -14,22 +14,19 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from __future__ import absolute_import, division, print_function, \
-    with_statement
-
 
 import unittest
-from shadowsocks import dns
+from shadowsocks.dns.protocol import *
 
 
 class DNSTestCase(unittest.TestCase):
 
     def test_socekt(self):
-        servers = dns.load_resolv_conf()
+        servers = load_resolv_conf()
         self.assertTrue(bool(servers))
 
         hostname = b'www.baidu.com'
-        sock = dns.Socket(servers)
+        sock = DNSSocket(servers)
         sock.send_dns_request(hostname)
         response = sock.recv_dns_response()
         self.assertTrue(response.hostname == hostname)

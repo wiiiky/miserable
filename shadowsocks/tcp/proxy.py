@@ -25,7 +25,7 @@ from shadowsocks.tcp.peer import return_val_if_wouldblock
 from shadowsocks.tcp.transfer import LocalTransfer
 
 
-class Proxy(object):
+class TCPProxy(object):
     """Shadowsocks TCP proxy"""
 
     def __init__(self, config, dns_resolver):

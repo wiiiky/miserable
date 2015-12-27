@@ -15,23 +15,20 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from __future__ import absolute_import, division, print_function, \
-    with_statement
-
 import os
 import socket
 import struct
 import re
 import logging
 
-from shadowsocks import common, lru_cache, eventloop, shell, dns
+from shadowsocks import lru_cache, eventloop
+from shadowsocks.dns.protocol import *
+from shadowsocks.utils import *
 
 
 CACHE_SWEEP_INTERVAL = 30
 
 VALID_HOSTNAME = re.compile(br'(?!-)[A-Z\d-]{1,63}(?<!-)$', re.IGNORECASE)
-
-common.patch_socket()
 
 
 def is_valid_hostname(hostname):
@@ -50,8 +47,8 @@ class DNSResolver(object):
 
     def __init__(self):
         self._loop = None
-        self._hosts = dns.load_hosts_conf()
-        self._servers = dns.load_resolv_conf()
+        self._hosts = load_hosts_conf()
+        self._servers = load_resolv_conf()
         self._hostname_status = {}
         self._hostname_to_cb = {}
         self._cb_to_hostname = {}
@@ -62,7 +59,7 @@ class DNSResolver(object):
 
     def _refresh(self):
         # create or refresh DNS socket
-        self._sock = dns.Socket(self._servers)
+        self._sock = DNSSocket(self._servers)
         self._sock.setblocking(False)
         self._loop.add(self._sock, eventloop.POLL_IN, self)
 
@@ -89,26 +86,27 @@ class DNSResolver(object):
             del self._hostname_status[hostname]
 
     def _handle_response(self, response):
-        if response.is_valid():
-            hostname = response.hostname
-            ip = None
-            for answer in response.answers:
-                if answer['type'] in (dns.TYPE.A, dns.TYPE.AAAA) and \
-                        answer['class'] == dns.CLASS.IN:
-                    ip = answer['addr']
+        if not response:
+            return
+        hostname = response.hostname
+        ip = None
+        for answer in response.answers:
+            if answer['type'] in (TYPE.A, TYPE.AAAA) and \
+                    answer['class'] == CLASS.IN:
+                ip = answer['addr']
+                break
+        if not ip and self._hostname_status.get(hostname, STATUS_IPV6) \
+                == STATUS_IPV4:
+            self._hostname_status[hostname] = STATUS_IPV6
+            self._sock.send_dns_request(hostname, TYPE.AAAA)
+        elif ip:
+            self._cache[hostname] = ip
+            self._call_callback(hostname, ip)
+        elif self._hostname_status.get(hostname, None) == STATUS_IPV6:
+            for question in response.questions:
+                if question['type'] == TYPE.AAA:
+                    self._call_callback(hostname, None)
                     break
-            if not ip and self._hostname_status.get(hostname, STATUS_IPV6) \
-                    == STATUS_IPV4:
-                self._hostname_status[hostname] = STATUS_IPV6
-                self._sock.send_dns_request(hostname, dns.TYPE.AAAA)
-            elif ip:
-                self._cache[hostname] = ip
-                self._call_callback(hostname, ip)
-            elif self._hostname_status.get(hostname, None) == STATUS_IPV6:
-                for question in response.questions:
-                    if question['type'] == dns.TYPE.AAA:
-                        self._call_callback(hostname, None)
-                        break
 
     def handle_event(self, sock, fd, event):
         if sock != self._sock:
@@ -138,10 +136,10 @@ class DNSResolver(object):
                         del self._hostname_status[hostname]
 
     def resolve(self, hostname, callback):
-        hostname = common.to_bytes(hostname)
+        hostname = tobytes(hostname)
         if not hostname:
             callback(None, Exception('empty hostname'))
-        elif common.is_ip(hostname):
+        elif check_ip(hostname):
             callback((hostname, hostname), None)
         elif hostname in self._hosts:
             logging.debug('hit hosts: %s', hostname)
@@ -173,52 +171,3 @@ class DNSResolver(object):
                 self._loop.remove(self._sock)
             self._sock.close()
             self._sock = None
-
-
-def test():
-    dns_resolver = DNSResolver()
-    loop = eventloop.EventLoop()
-    dns_resolver.add_to_loop(loop)
-
-    global counter
-    counter = 0
-
-    def make_callback():
-        global counter
-
-        def callback(result, error):
-            global counter
-            # TODO: what can we assert?
-            print(result, error)
-            counter += 1
-            if counter == 9:
-                dns_resolver.close()
-                loop.stop()
-        a_callback = callback
-        return a_callback
-
-    assert(make_callback() != make_callback())
-
-    dns_resolver.resolve(b'google.com', make_callback())
-    dns_resolver.resolve('google.com', make_callback())
-    dns_resolver.resolve('example.com', make_callback())
-    dns_resolver.resolve('ipv6.google.com', make_callback())
-    dns_resolver.resolve('www.facebook.com', make_callback())
-    dns_resolver.resolve('ns2.google.com', make_callback())
-    dns_resolver.resolve('invalid.@!#$%^&$@.hostname', make_callback())
-    dns_resolver.resolve('toooooooooooooooooooooooooooooooooooooooooooooooooo'
-                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
-                         'long.hostname', make_callback())
-    dns_resolver.resolve('toooooooooooooooooooooooooooooooooooooooooooooooooo'
-                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
-                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
-                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
-                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
-                         'ooooooooooooooooooooooooooooooooooooooooooooooooooo'
-                         'long.hostname', make_callback())
-
-    loop.run()
-
-
-if __name__ == '__main__':
-    test()

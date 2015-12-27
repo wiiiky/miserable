@@ -45,6 +45,8 @@ def stop_transfer_if_fail(f):
         except Exception as e:
             transfer.stop(warning='%s closed because of %s' %
                           (transfer.display_name, str(e)))
+            import traceback
+            traceback.print_exc(e)
     return wrapper
 
 
@@ -153,7 +155,6 @@ class LocalTransfer(object):
                 data = data[3:]
             addrtype, server_addr, server_port, length = parse_header(data)
             server_addr = tostr(server_addr)
-            server_port = toint(server_port)
             logging.info('connecting %s:%d from %s:%d' %
                          (server_addr, server_port, self._client.address[0],
                           self._client.address[1]))

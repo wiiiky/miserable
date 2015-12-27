@@ -1,7 +1,9 @@
-Shadowsocks
+Miserable
 ===================
 
-Shadowsocks is a fast tunnel proxy that was developed by clowwindy at first.
+Miserable is my fork of Shadowsocks.
+
+Shadowsocks is a fast tunnel proxy that was developed by clowwindy before.
 
 For well-known reasons, clowwindy has to give up shadowsocks.
 
@@ -23,5 +25,3 @@ So I plan to re-implement most of it as it's simple naturally.
 3. Documentations are really important for open source project, it helps others to understand the system principle and implementation details. So I'm going to document the protocol of Shadowsocks some the implementation details. Hope them helps.
 
 4. I won't release next version of Shadowsocks until I think it has been re-implemented well. And it may be a long time before it.
-
-5. Perhaps I should change the name of Shadowsocks to avoid troubles. Any idea?

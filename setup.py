@@ -13,8 +13,8 @@ setup(
     description="A fast tunnel proxy that help you get through firewalls",
     author='Wiky',
     author_email='wiiiky@outlook.com',
-    url='https://github.com/wiiiky/shadowsocks',
-    packages=['shadowsocks', 'shadowsocks.crypto'],
+    url='https://github.com/wiiiky/miserable',
+    packages=['shadowsocks', 'shadowsocks.crypto', 'shadowsocks.dns', 'shadowsocks.tcp'],
     package_data={
         'shadowsocks': ['README.rst', 'LICENSE']
     },
@@ -26,12 +26,7 @@ setup(
     """,
     classifiers=[
         'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.6',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: Implementation :: CPython',
         'Programming Language :: Python :: Implementation :: PyPy',
         'Topic :: Internet :: Proxy Servers',

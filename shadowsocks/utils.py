@@ -14,18 +14,34 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import socket
+
 
 def tostr(data):
-    if type(data) == bytes:
+    """convert bytes to str"""
+    if type(data) is bytes:
         data = data.decode('utf8')
     return data
 
 
 def tobytes(data):
-    if type(data) == str:
+    """convert str or int to bytes"""
+    if type(data) is int:
+        data = chr(data)
+    if type(data) is str:
         data = data.encode('utf8')
     return data
 
 
-def toint(data):
-    return int(data)
+def check_ip(address):
+    """
+    checks to see if the address is a valid IP address
+    """
+    for family in (socket.AF_INET, socket.AF_INET6):
+        try:
+            address = tostr(address)
+            socket.inet_pton(family, address)
+            return family
+        except (TypeError, ValueError, OSError, IOError):
+            pass
+    return False

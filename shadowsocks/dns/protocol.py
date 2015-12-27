@@ -14,8 +14,6 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from __future__ import absolute_import, division, print_function, \
-    with_statement
 
 # rfc1035
 # format
@@ -72,12 +70,13 @@ from __future__ import absolute_import, division, print_function, \
 # /                                               /
 # +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
 
-from shadowsocks import common
+from shadowsocks.utils import *
 
 import struct
 import socket
 import json
-import os
+import random
+import time
 
 
 class TYPE:
@@ -112,38 +111,31 @@ class CLASS:
 class Request(object):
     """DNS request"""
 
-    def __init__(self, hostname, qtype):
+    def __init__(self, hostname, qtype, mid=None):
         self.hostname = hostname
         self.qtype = qtype
-        self.data = None
-
-    @property
-    def bytes(self):
-        if not self.data:
-            self.data = self._build_package()
-        return self.data
+        self.mid = mid if type(mid) is int else random.randint(1, 65535)
+        self.bytes = self._build_package()
 
     def _build_hostname(self):
-        hostname = common.to_bytes(self.hostname)
-        address = hostname.strip(b'.')
+        hostname = tobytes(self.hostname)
         labels = hostname.split(b'.')
         results = []
         for label in labels:
             l = len(label)
             if l > 63:
                 return None
-            results.append(common.chr(l))
+            results.append(tobytes(l))
             results.append(label)
         results.append(b'\0')
         return b''.join(results)
 
     def _build_package(self):
         """build the DNS request package"""
-        mid = os.urandom(2)
         header = struct.pack('!BBHHHH', 1, 0, 1, 0, 0, 0)
         addr = self._build_hostname()
         qtype_qclass = struct.pack('!HH', self.qtype, CLASS.IN)
-        return mid + header + addr + qtype_qclass
+        return struct.pack('!H', self.mid) + header + addr + qtype_qclass
 
 
 class Response(object):
@@ -154,6 +146,7 @@ class Response(object):
         self.hostname = None
         self.questions = None
         self.answers = None
+        self.mid = None
         self._parse_response()
 
     def is_valid(self):
@@ -165,11 +158,9 @@ class Response(object):
         try:
             if len(data) < 12:
                 return
-            header = self._parse_header()
-            if not header:
-                return
+
             res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount, \
-                res_ancount, res_nscount, res_arcount = header
+                res_ancount, res_nscount, res_arcount = self._parse_header()
 
             qds = []
             ans = []
@@ -190,12 +181,14 @@ class Response(object):
                 offset += l
             if qds:
                 self.hostname = qds[0][0]
-                self.questions = [{'addr': a[1], 'type': a[
-                    2], 'class': a[3]} for a in qds if a]
-                self.answers = [{'addr': a[1], 'type': a[
-                    2], 'class': a[3]} for a in ans if a]
+                self.questions = [{'addr': a[1], 'type': a[2], 'class': a[3]}
+                                  for a in qds if a]
+                self.answers = [{'addr': a[1], 'type': a[2], 'class': a[3]}
+                                for a in ans if a]
+                self.mid = res_id
         except Exception as e:
-            shell.print_exception(e)
+            import traceback
+            traceback.print_exc(e)
 
     def _parse_header(self):
         header = struct.unpack('!HBBHHHH', self.data[:12])
@@ -204,38 +197,34 @@ class Response(object):
         res_tc = header[1] & 2
         res_ra = header[2] & 128
         res_rcode = header[2] & 15
-        # assert res_tc == 0
-        # assert res_rcode in [0, 3]
         res_qdcount = header[3]
         res_ancount = header[4]
         res_nscount = header[5]
         res_arcount = header[6]
-        return (res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount,
-                res_ancount, res_nscount, res_arcount)
+        return res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount,\
+            res_ancount, res_nscount, res_arcount
 
     def _parse_record(self, offset, question=False):
         nlen, name = self._parse_name(offset)
         if not question:
             """DNS answer"""
-            record_type, record_class, record_ttl, record_rdlength = struct.unpack(
+            rtype, rclass, rttl, rlength = struct.unpack(
                 '!HHiH', self.data[offset + nlen:offset + nlen + 10]
             )
-            ip = self._parse_ip(
-                record_type, record_rdlength, offset + nlen + 10)
-            return nlen + 10 + record_rdlength, \
-                (name, ip, record_type, record_class, record_ttl)
+            ip = self._parse_ip(rtype, rlength, offset + nlen + 10)
+            return nlen + 10 + rlength, (name, ip, rtype, rclass, rttl)
         else:
             """DNS question"""
-            record_type, record_class = struct.unpack(
+            rtype, rclass = struct.unpack(
                 '!HH', self.data[offset + nlen:offset + nlen + 4]
             )
-            return nlen + 4, (name, None, record_type, record_class, None, None)
+            return nlen + 4, (name, None, rtype, rclass, None, None)
 
     def _parse_name(self, offset):
         """parse hostname from DNS response"""
         p = offset
         labels = []
-        l = common.ord(self.data[p])
+        l = self.data[p]
         while l > 0:
             if (l & (128 + 64)) == (128 + 64):
                 # pointer
@@ -249,39 +238,62 @@ class Response(object):
             else:
                 labels.append(self.data[p + 1:p + 1 + l])
                 p += 1 + l
-            l = common.ord(self.data[p])
+            l = self.data[p]
         return p - offset + 1, b'.'.join(labels)
 
     def _parse_ip(self, rtype, length, offset):
         if rtype == TYPE.A:
-            return socket.inet_ntop(socket.AF_INET, self.data[offset:offset + length])
+            return socket.inet_ntop(socket.AF_INET,
+                                    self.data[offset:offset + length])
         elif rtype == TYPE.AAAA:
-            return socket.inet_ntop(socket.AF_INET6, self.data[offset:offset + length])
+            return socket.inet_ntop(socket.AF_INET6,
+                                    self.data[offset:offset + length])
         elif rtype in [TYPE.CNAME, TYPE.NS]:
             return self._parse_name(offset)[1]
         else:
             return self.data[offset:offset + length]
 
 
-class Socket(socket.socket):
+class DNSSocket(socket.socket):
     """UDP socket for sending DNS request & receiving DNS response"""
 
     def __init__(self, servers):
+        self._id = 0
+        self._wait = {}
+        self._timeout = 60
         self._servers = servers if hasattr(servers, '__iter__') else [servers]
         # TODO when dns server is IPv6
-        super(Socket, self).__init__(socket.AF_INET, socket.SOCK_DGRAM,
-                                     socket.SOL_UDP)
+        super(DNSSocket, self).__init__(socket.AF_INET, socket.SOCK_DGRAM,
+                                        socket.SOL_UDP)
 
     def send_dns_request(self, hostname, qtype=TYPE.A):
-        req = Request(hostname, qtype)
+        request = Request(hostname, qtype, mid=self._id)
         for server in self._servers:
-            self.sendto(req.bytes, (server, 53))
+            self.sendto(request.bytes, (server, 53))
+        self._wait[self._id] = time.time()
+        self._increase_id()
 
     def recv_dns_response(self):
+        self._check_timeout()
         data, addr = self.recvfrom(1024)
         if addr[0] not in self._servers:
             return
-        return Response(data)
+        response = Response(data)
+        if not response.is_valid() or response.mid not in self._wait:
+            return None
+        del self._wait[response.mid]
+        return response
+
+    def _increase_id(self):
+        self._id += 1
+        if self._id > 65535:
+            self._id = 0
+
+    def _check_timeout(self):
+        now = time.time()
+        for mid, t in list(self._wait.items()):
+            if now - t > self._timeout:
+                del self._wait[mid]
 
 
 def load_resolv_conf(path='/etc/resolv.conf'):
@@ -293,7 +305,7 @@ def load_resolv_conf(path='/etc/resolv.conf'):
                 line = line.strip()
                 if line and line.startswith('nameserver'):
                     parts = line.split()
-                    if len(parts) >= 2 and common.is_ip(parts[1]) \
+                    if len(parts) >= 2 and check_ip(parts[1]) \
                             == socket.AF_INET:
                         servers.append(parts[1])
     except IOError as e:
@@ -303,10 +315,8 @@ def load_resolv_conf(path='/etc/resolv.conf'):
     return servers
 
 
-def load_hosts_conf():
+def load_hosts_conf(path='/etc/hosts'):
     """parse hosts file"""
-    path = os.environ['WINDIR'] + '/system32/drivers/etc/hosts'\
-        if 'WINDIR' in os.environ else '/etc/hosts'
     hosts = {}
     try:
         with open(path, 'r') as f:
@@ -314,7 +324,7 @@ def load_hosts_conf():
                 parts = line.strip().split()
                 if len(parts) >= 2:
                     ip = parts[0]
-                    if common.is_ip(ip):
+                    if check_ip(ip):
                         for hostname in parts[1:]:
                             if hostname:
                                 hosts[hostname] = ip

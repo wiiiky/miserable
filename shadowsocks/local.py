@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
 # Copyright 2012-2015 clowwindy
@@ -15,9 +15,6 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from __future__ import absolute_import, division, print_function, \
-    with_statement
-
 import sys
 import os
 import logging
@@ -25,14 +22,14 @@ import signal
 
 
 try:
-    from shadowsocks import shell, daemon, eventloop, \
-        tcprelay, udprelay, asyncdns
-    from shadowsocks.tcp.proxy import Proxy as TCPProxy
+    from shadowsocks import shell, daemon, eventloop, udprelay
+    from shadowsocks.dns.resolver import DNSResolver
+    from shadowsocks.tcp.proxy import TCPProxy
 except ImportError as e:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
-    from shadowsocks import shell, daemon, eventloop, tcprelay, \
-        udprelay, asyncdns
-    from shadowsocks.tcp.proxy import Proxy as TCPProxy
+    from shadowsocks import shell, daemon, eventloop, udprelay
+    from shadowsocks.dns.resolver import DNSResolver
+    from shadowsocks.tcp.proxy import TCPProxy
 
 
 def main():
@@ -51,7 +48,7 @@ def main():
         logging.info('starting local at %s:%d' %
                      (config['local_address'], config['local_port']))
 
-        dns_resolver = asyncdns.DNSResolver()
+        dns_resolver = DNSResolver()
         tcp_server = TCPProxy(config, dns_resolver)
         udp_server = udprelay.UDPRelay(config, dns_resolver, True)
         loop = eventloop.EventLoop()
