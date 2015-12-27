@@ -19,10 +19,10 @@ import time
 import socket
 import logging
 from shadowsocks.exception import *
-from shadowsocks.decorator import *
 from shadowsocks.eventloop import *
 
-from .transfer import LocalTransfer
+from shadowsocks.tcp.peer import return_val_if_wouldblock
+from shadowsocks.tcp.transfer import LocalTransfer
 
 
 class Proxy(object):
@@ -70,8 +70,7 @@ class Proxy(object):
     def handle_event(self, sock, fd, event):
         # handle events and dispatch to handlers
         if event & POLL_ERR:
-            # TODO
-            raise Exception('server_socket error')
+            raise UnexpectedEventError('local server error!!!')
         self._accept()
 
     @return_val_if_wouldblock(None)
@@ -95,6 +94,8 @@ class Proxy(object):
         now = time.time()
         transfers = []
         for t in self._transfers:
+            if t.closed:    # skip closed transfer
+                continue
             if now - t.last_active > self._timeout:
                 t.stop(info='%s is timeout' % t.display_name)
             else:

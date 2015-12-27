@@ -16,8 +16,23 @@
 
 import socket
 from shadowsocks.eventloop import *
-from shadowsocks.decorator import *
 from shadowsocks.exception import *
+
+
+class return_val_if_wouldblock(object):
+
+    def __init__(self, value):
+        self._value = value
+
+    def __call__(self, f):
+        def wrapper(*args, **kwargs):
+            try:
+                return f(*args, **kwargs)
+            except (OSError, IOError) as e:
+                if exception_wouldblock(e):
+                    return self._value
+                raise e
+        return wrapper
 
 
 class Peer(object):

@@ -77,3 +77,7 @@ class UnknownCommandException(BaseException):
     def __init__(self, cmd):
         msg = u'unknown command %s' % cmd
         super(UnknownCommandException, self).__init__(msg)
+
+
+class UnexpectedEventError(BaseException):
+    pass

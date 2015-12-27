@@ -20,9 +20,9 @@ import socket
 import struct
 import logging
 import traceback
+from shadowsocks.utils import *
 from shadowsocks.exception import *
 from shadowsocks.eventloop import *
-from shadowsocks.decorator import *
 from shadowsocks.encrypt import Encryptor
 from shadowsocks.shell import print_exception
 from shadowsocks.common import parse_header
@@ -36,6 +36,15 @@ class SOCKS5Command(object):
     CONNECT = 1
     BIND = 2
     UDP_ASSOCIATE = 3
+
+
+def stop_transfer_if_fail(f):
+    def wrapper(transfer, *args, **kwargs):
+        try:
+            return f(transfer, *args, **kwargs)
+        except Exception as e:
+            transfer.stop(info=str(e))
+    return wrapper
 
 
 class LocalTransfer(object):
@@ -59,6 +68,10 @@ class LocalTransfer(object):
         self._dns_resolver = dns_resolver
         self._last_active = time.time()
         self._closed = False
+
+    @property
+    def closed(self):
+        return self._closed
 
     @property
     def last_active(self):
@@ -129,10 +142,12 @@ class LocalTransfer(object):
                 # just trim VER CMD RSV
                 data = data[3:]
             addrtype, server_addr, server_port, length = parse_header(data)
+            server_addr = tostr(server_addr)
+            server_port = toint(server_port)
             logging.info('connecting %s:%d from %s:%d' %
                          (server_addr, server_port, self._client.address[0],
                           self._client.address[1]))
-            self._server_address = (str(server_addr), str(server_port))
+            self._server_address = (server_addr, server_port)
             # forward address to remote
             self._client.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x10\x10')
             self._client.state = ClientState.DNS
@@ -152,7 +167,7 @@ class LocalTransfer(object):
 
         if event & POLL_IN:
             data = self._remote.read()
-            if data is b'':
+            if data == b'':
                 self.stop(info=('remote %s:%s closed' % self._remote.address))
                 return
             self._client.write(data)
