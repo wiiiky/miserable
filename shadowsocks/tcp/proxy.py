@@ -76,7 +76,7 @@ class Proxy(object):
     @return_val_if_wouldblock(None)
     def _accept(self):
         client, addr = self._server_socket.accept()
-        logging.debug('accept %s' % str(addr))
+        logging.debug('accept %s:%s' % addr)
         transfer = LocalTransfer(self._config, self._loop, client, addr,
                                  self._dns_resolver)
         transfer.start()

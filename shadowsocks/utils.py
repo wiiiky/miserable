@@ -24,7 +24,7 @@ def tostr(data):
 def tobytes(data):
     if type(data) == str:
         data = data.encode('utf8')
-    return dat
+    return data
 
 
 def toint(data):

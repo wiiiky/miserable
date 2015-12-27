@@ -81,3 +81,7 @@ class UnknownCommandException(BaseException):
 
 class UnexpectedEventError(BaseException):
     pass
+
+
+class InvalidHeaderException(BaseException):
+    pass

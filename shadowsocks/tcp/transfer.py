@@ -23,9 +23,9 @@ import traceback
 from shadowsocks.utils import *
 from shadowsocks.exception import *
 from shadowsocks.eventloop import *
+from shadowsocks.protocol import *
 from shadowsocks.encrypt import Encryptor
 from shadowsocks.shell import print_exception
-from shadowsocks.common import parse_header
 
 from shadowsocks.tcp.client import ClientState, Client
 from shadowsocks.tcp.remote import Remote
@@ -43,7 +43,8 @@ def stop_transfer_if_fail(f):
         try:
             return f(transfer, *args, **kwargs)
         except Exception as e:
-            transfer.stop(info=str(e))
+            transfer.stop(warning='%s closed because of %s' %
+                          (transfer.display_name, str(e)))
     return wrapper
 
 
@@ -80,7 +81,8 @@ class LocalTransfer(object):
     @property
     def display_name(self):
         client = '%s:%s' % self._client.address
-        server = '%s:%s' % self._server_address if self._server_address else 'None'
+        server = '%s:%s' % self._server_address if self._server_address \
+            else 'None'
         return '%s <==> %s' % (client, server)
 
     def start(self):
@@ -110,14 +112,22 @@ class LocalTransfer(object):
 
         if self._client.state in (ClientState.INIT, ClientState.ADDR)\
                 and not data:
+            """in state INIT or ADDR, supposed to receive data from client"""
             self.stop(info='client %s:%s closed' % self._client.address)
             return
 
         if self._client.state == ClientState.INIT:
-            # Shall we verify the HELLO message from client?
+            """
+            receive HELLO message from client, shall we verify it ?
+            and send a HELLO back
+            """
             self._client.write(b'\x05\00')  # HELLO
             self._client.state = ClientState.ADDR
         elif self._client.state == ClientState.ADDR:
+            """
+            receive the server addr,
+            give client a feedback and connect to remote
+            """
             vsn = data[0]
             cmd = data[1]
             if vsn != 5:
@@ -198,7 +208,7 @@ class LocalTransfer(object):
         if info:
             logging.info(info)
         elif warning:
-            logging.warning(warning)
+            logging.warn(warning)
         self._closed = True
         self._client.close()
         if self._remote:
