@@ -188,7 +188,7 @@ class Response(object):
                 self.mid = res_id
         except Exception as e:
             import traceback
-            traceback.print_exc(e)
+            traceback.print_exc()
 
     def _parse_header(self):
         header = struct.unpack('!HBBHHHH', self.data[:12])

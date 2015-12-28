@@ -26,7 +26,7 @@ try:
     from shadowsocks.dns.resolver import DNSResolver
     from shadowsocks.tcp.proxy import TCPProxy
 except ImportError as e:
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
+    sys.path.append(os.path.curdir)
     from shadowsocks import shell, daemon, eventloop, udprelay
     from shadowsocks.dns.resolver import DNSResolver
     from shadowsocks.tcp.proxy import TCPProxy
@@ -34,11 +34,6 @@ except ImportError as e:
 
 def main():
     shell.check_python()
-
-    # fix py2exe
-    if getattr(sys, 'frozen', None) in ('windows_exe', 'console_exe'):
-        p = os.path.dirname(os.path.abspath(sys.executable))
-        os.chdir(p)
 
     config = shell.get_config(True)
 
@@ -49,16 +44,16 @@ def main():
                      (config['local_address'], config['local_port']))
 
         dns_resolver = DNSResolver()
-        tcp_server = TCPProxy(config, dns_resolver)
+        tcp_proxy = TCPProxy(config, dns_resolver)
         udp_server = udprelay.UDPRelay(config, dns_resolver, True)
         loop = eventloop.EventLoop()
         dns_resolver.add_to_loop(loop)
-        tcp_server.add_to_loop(loop)
+        tcp_proxy.add_to_loop(loop)
         udp_server.add_to_loop(loop)
 
         def sigint_handler(signum, _):
             logging.warn('received SIGINT, doing graceful shutting down..')
-            tcp_server.close(next_tick=True)
+            tcp_proxy.close(next_tick=True)
             udp_server.close(next_tick=True)
         signal.signal(signal.SIGINT, sigint_handler)
 
