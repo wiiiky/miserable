@@ -23,14 +23,16 @@ from shadowsocks.eventloop import *
 
 from shadowsocks.tcp.peer import return_val_if_wouldblock
 from shadowsocks.tcp.transfer import LocalTransfer
+from shadowsocks.config import LocalConfig
 
 
 class TCPProxy(object):
     """Shadowsocks TCP proxy"""
 
-    def __init__(self, config, dns_resolver):
-        addr = config['local_address']
-        port = config['local_port']
+    def __init__(self, dns_resolver):
+        cfg = LocalConfig.get_config()
+        addr = cfg['local_address']
+        port = cfg['local_port']
 
         address = socket.getaddrinfo(addr, port, 0, socket.SOCK_STREAM,
                                      socket.SOL_TCP)
@@ -38,24 +40,23 @@ class TCPProxy(object):
             raise InvalidAddressException(addr, port)
 
         af, socktype, proto, canonname, sa = address[0]
-        server_socket = socket.socket(af, socktype, proto)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.bind(sa)
-        server_socket.setblocking(False)
+        sock = socket.socket(af, socktype, proto)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(sa)
+        sock.setblocking(False)
 
-        if config['fast_open']:
+        if cfg['fast_open']:
             if not hasattr(socket, 'TCP_FASTOPEN'):
                 raise UnsupportFeatureException('TCP Fast Open')
-            server_socket.setsockopt(socket.SOL_SOCKET, socket.TCP_FASTOPEN, 5)
-        server_socket.listen(1024)
+            sock.setsockopt(socket.SOL_SOCKET, socket.TCP_FASTOPEN, 5)
+        sock.listen(1024)
 
-        self._config = config
         self._dns_resolver = dns_resolver
-        self._address = (addr, port)
-        self._server_socket = server_socket
+        self._local_address = (addr, port)
+        self._socket = sock
         self._loop = None
         self._closed = False
-        self._timeout = config['timeout']
+        self._timeout = cfg['timeout']
         self._transfers = []
 
     def add_to_loop(self, loop):
@@ -64,7 +65,7 @@ class TCPProxy(object):
         if self._closed:
             raise Exception('already closed')
         self._loop = loop
-        self._loop.add(self._server_socket, POLL_IN | POLL_ERR, self)
+        self._loop.add(self._socket, POLL_IN | POLL_ERR, self)
         self._loop.add_periodic(self.handle_periodic)
 
     def handle_event(self, sock, fd, event):
@@ -75,10 +76,9 @@ class TCPProxy(object):
 
     @return_val_if_wouldblock(None)
     def _accept(self):
-        client, addr = self._server_socket.accept()
+        client, addr = self._socket.accept()
         logging.debug('accept %s:%s' % addr)
-        transfer = LocalTransfer(self._config, self._loop, client, addr,
-                                 self._dns_resolver)
+        transfer = LocalTransfer(self._loop, client, addr, self._dns_resolver)
         transfer.start()
         self._transfers.append(transfer)
 
@@ -108,10 +108,10 @@ class TCPProxy(object):
             self._close()
 
     def _close(self):
-        if not self._server_socket:
+        if not self._socket:
             return
-        logging.info('close TCP %s:%s' % self._address)
-        self._loop.remove(self._server_socket)
-        self._server_socket.close()
-        self._server_socket = None
+        logging.info('close TCP %s:%s' % self._local_address)
+        self._loop.remove(self._socket)
+        self._socket.close()
+        self._socket = None
         self._loop.stop()

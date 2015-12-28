@@ -27,6 +27,7 @@ from shadowsocks.encrypt import Encryptor
 
 from shadowsocks.tcp.client import ClientState, Client
 from shadowsocks.tcp.remote import Remote
+from shadowsocks.config import LocalConfig
 
 
 def stop_transfer_if_fail(f):
@@ -47,17 +48,13 @@ class LocalTransfer(object):
     client <==> local <==> remote
     """
 
-    def __init__(self, config, loop, sock, addr, dns_resolver):
-        self._cfg_password = config['password']
-        self._cfg_method = config['method']
-        self._cfg_server = config['remote_address']
-        self._cfg_server_port = config['remote_port']
-        self._cfg_verbose = config['verbose']
+    def __init__(self, loop, sock, addr, dns_resolver):
+        cfg = LocalConfig.get_config()
 
-        self._encryptor = Encryptor(self._cfg_password, self._cfg_method)
+        self._encryptor = Encryptor(cfg['password'], cfg['method'])
         self._loop = loop
         self._client = Client(sock, addr, loop, self._encryptor)
-        self._remote_address = (self._cfg_server, self._cfg_server_port)
+        self._remote_address = (cfg['remote_address'], cfg['remote_port'])
         self._remote = None
         self._server_address = None
         self._dns_resolver = dns_resolver

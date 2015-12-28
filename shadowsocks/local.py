@@ -49,7 +49,7 @@ def main():
                      (cfg['local_address'], cfg['local_port']))
 
         dns_resolver = DNSResolver()
-        tcp_proxy = TCPProxy(cfg, dns_resolver)
+        tcp_proxy = TCPProxy(dns_resolver)
         udp_server = udprelay.UDPRelay(cfg, dns_resolver, True)
         loop = eventloop.EventLoop()
         dns_resolver.add_to_loop(loop)
