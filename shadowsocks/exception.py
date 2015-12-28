@@ -30,6 +30,8 @@ def errno_from_exception(e):
 
 
 def exception_wouldblock(e):
+    """
+    """
     return errno_from_exception(e) in\
         (errno.ETIMEDOUT, errno.EAGAIN, errno.EWOULDBLOCK)
 
