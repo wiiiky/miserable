@@ -112,13 +112,17 @@ class Request(object):
     """DNS request"""
 
     def __init__(self, hostname, qtype, mid=None):
+        """
+        if message ID not specified, use a random one
+        """
         self.hostname = hostname
         self.qtype = qtype
         self.mid = mid if type(mid) is int else random.randint(1, 65535)
-        self.bytes = self._build_package()
+        self.bytes = self.build_package(self.mid, self.hostname, self.qtype)
 
-    def _build_hostname(self):
-        hostname = tobytes(self.hostname)
+    @classmethod
+    def build_hostname(klass, hostname):
+        hostname = tobytes(hostname)
         labels = hostname.split(b'.')
         results = []
         for label in labels:
@@ -130,128 +134,122 @@ class Request(object):
         results.append(b'\0')
         return b''.join(results)
 
-    def _build_package(self):
+    @classmethod
+    def build_package(klass, mid, hostname, qtype):
         """build the DNS request package"""
         header = struct.pack('!BBHHHH', 1, 0, 1, 0, 0, 0)
-        addr = self._build_hostname()
-        qtype_qclass = struct.pack('!HH', self.qtype, CLASS.IN)
-        return struct.pack('!H', self.mid) + header + addr + qtype_qclass
+        addr = klass.build_hostname(hostname)
+        qtype_qclass = struct.pack('!HH', qtype, CLASS.IN)
+        return struct.pack('!H', mid) + header + addr + qtype_qclass
 
 
 class Response(object):
     """DNS Result"""
 
     def __init__(self, data):
-        self.data = data
-        self.hostname = None
-        self.questions = None
-        self.answers = None
-        self.mid = None
-        self._parse_response()
+        self.mid, self.hostname, self.questions, self.answers\
+            = self.parse_response(data)
 
     def is_valid(self):
-        return bool(self.hostname) and bool(self.answers) and bool(self.questions)
+        return bool(self.hostname) and bool(self.answers)\
+            and bool(self.questions)
 
-    def _parse_response(self):
-        """parse the DNS response"""
-        data = self.data
-        try:
-            if len(data) < 12:
-                return
+    @classmethod
+    def parse_header(klass, data):
+        """
+        data should be a bytes with length 12
+        """
+        header = struct.unpack('!HBBHHHH', data)
+        mid = header[0]
+        qr = header[1] & 128
+        tc = header[1] & 2
+        ra = header[2] & 128
+        rcode = header[2] & 15
+        qdcount = header[3]
+        ancount = header[4]
+        nscount = header[5]
+        arcount = header[6]
+        return mid, qr, tc, ra, rcode, qdcount, ancount, nscount, arcount
 
-            res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount, \
-                res_ancount, res_nscount, res_arcount = self._parse_header()
-
-            qds = []
-            ans = []
-            offset = 12
-            for i in range(0, res_qdcount):
-                l, r = self._parse_record(offset, True)
-                offset += l
-                qds.append(r)
-            for i in range(0, res_ancount):
-                l, r = self._parse_record(offset)
-                offset += l
-                ans.append(r)
-            for i in range(0, res_nscount):
-                l, r = self._parse_record(offset)
-                offset += l
-            for i in range(0, res_arcount):
-                l, r = self._parse_record(offset)
-                offset += l
-            if qds:
-                self.hostname = qds[0][0]
-                self.questions = [{'addr': a[1], 'type': a[2], 'class': a[3]}
-                                  for a in qds if a]
-                self.answers = [{'addr': a[1], 'type': a[2], 'class': a[3]}
-                                for a in ans if a]
-                self.mid = res_id
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-
-    def _parse_header(self):
-        header = struct.unpack('!HBBHHHH', self.data[:12])
-        res_id = header[0]
-        res_qr = header[1] & 128
-        res_tc = header[1] & 2
-        res_ra = header[2] & 128
-        res_rcode = header[2] & 15
-        res_qdcount = header[3]
-        res_ancount = header[4]
-        res_nscount = header[5]
-        res_arcount = header[6]
-        return res_id, res_qr, res_tc, res_ra, res_rcode, res_qdcount,\
-            res_ancount, res_nscount, res_arcount
-
-    def _parse_record(self, offset, question=False):
-        nlen, name = self._parse_name(offset)
-        if not question:
-            """DNS answer"""
-            rtype, rclass, rttl, rlength = struct.unpack(
-                '!HHiH', self.data[offset + nlen:offset + nlen + 10]
-            )
-            ip = self._parse_ip(rtype, rlength, offset + nlen + 10)
-            return nlen + 10 + rlength, (name, ip, rtype, rclass, rttl)
-        else:
-            """DNS question"""
-            rtype, rclass = struct.unpack(
-                '!HH', self.data[offset + nlen:offset + nlen + 4]
-            )
-            return nlen + 4, (name, None, rtype, rclass, None, None)
-
-    def _parse_name(self, offset):
+    @classmethod
+    def parse_name(klass, data):
         """parse hostname from DNS response"""
-        p = offset
         labels = []
-        l = self.data[p]
-        while l > 0:
+        p = 0
+        while p < len(data) and data[p] > 0:
+            l = data[p]
             if (l & (128 + 64)) == (128 + 64):
                 # pointer
-                ptr = struct.unpack('!H', self.data[p:p + 2])[0]
-                ptr &= 0x3FFF
-                r = self._parse_name(ptr)
+                ptr = struct.unpack('!H', data[p:p + 2])[0] & 0x3FFF
+                r = klass.parse_name(data[ptr:])
                 labels.append(r[1])
                 p += 2
                 # pointer is the end
-                return p - offset, b'.'.join(labels)
+                return p, b'.'.join(labels)
             else:
-                labels.append(self.data[p + 1:p + 1 + l])
+                labels.append(data[p + 1:p + 1 + l])
                 p += 1 + l
-            l = self.data[p]
-        return p - offset + 1, b'.'.join(labels)
+        return p + 1, b'.'.join(labels)
 
-    def _parse_ip(self, rtype, length, offset):
+    @classmethod
+    def parse_ip(klass, data, rtype, length):
         if rtype == TYPE.A:
-            return socket.inet_ntop(socket.AF_INET,
-                                    self.data[offset:offset + length])
+            return socket.inet_ntop(socket.AF_INET, data[:length])
         elif rtype == TYPE.AAAA:
-            return socket.inet_ntop(socket.AF_INET6,
-                                    self.data[offset:offset + length])
+            return socket.inet_ntop(socket.AF_INET6, data[:length])
         elif rtype in [TYPE.CNAME, TYPE.NS]:
-            return self._parse_name(offset)[1]
-        else:
-            return self.data[offset:offset + length]
+            return klass.parse_name(data)[1]
+        return data[:length]
+
+    @classmethod
+    def parse_record(klass, data, question=False):
+        nlen, name = klass.parse_name(data)
+        if not question:
+            """DNS answer"""
+            rtype, rclass, rttl, rlength = struct.unpack(
+                '!HHiH', data[nlen:nlen + 10]
+            )
+            ip = klass.parse_ip(data[nlen + 10:], rtype, rlength)
+            return nlen + 10 + rlength, (name, ip, rtype, rclass, rttl)
+        """DNS question"""
+        rtype, rclass = struct.unpack('!HH', data[nlen:nlen + 4])
+        return nlen + 4, (name, None, rtype, rclass, None, None)
+
+    @classmethod
+    def parse_response(klass, data):
+        """parse the DNS response"""
+        if len(data) < 12:
+            return
+
+        mid, qr, tc, ra, rcode, qdcount, ancount, nscount,\
+            arcount = klass.parse_header(data[:12])
+
+        qds = []
+        ans = []
+        data = data[12:]
+        for i in range(0, qdcount):
+            l, r = klass.parse_record(data, True)
+            qds.append(r)
+            data = data[l:]
+        for i in range(0, ancount):
+            l, r = klass.parse_record(data)
+            ans.append(r)
+            data = data[l:]
+        for i in range(0, nscount):
+            l, r = klass.parse_record(data)
+            data = data[l:]
+        for i in range(0, arcount):
+            l, r = klass.parse_record(data)
+            data = data[l:]
+        if qds:
+            hostname = qds[0][0]
+            questions = [{'addr': a[1], 'type': a[2], 'class': a[3]}
+                         for a in qds if a]
+            answers = [{'addr': a[1], 'type': a[2], 'class': a[3]}
+                       for a in ans if a]
+            mid = mid
+            return mid, hostname, questions, answers
+        return None, None, None, None
 
 
 class DNSSocket(socket.socket):
@@ -287,6 +285,7 @@ class DNSSocket(socket.socket):
     def _increase_id(self):
         self._id += 1
         if self._id > 65535:
+            """two bytes for message ID"""
             self._id = 0
 
     def _check_timeout(self):

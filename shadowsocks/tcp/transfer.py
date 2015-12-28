@@ -39,6 +39,8 @@ def stop_transfer_if_fail(f):
         except Exception as e:
             transfer.stop(warning='%s closed because of %s' %
                           (transfer.display_name, str(e)))
+            import traceback
+            traceback.print_exc()
     return wrapper
 
 
