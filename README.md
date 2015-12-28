@@ -17,6 +17,8 @@ Refer to the original README written by clowwindy for more details about shadows
 
 I plan to re-implement most of Shadowsocks as it's simple naturally.
 
+0.  I will change the name to Miserable completely sooner or later.
+
 1.  I do not want to support Python2 anymore, I don't think it makes any sence since Python3 has been released for so many years and already been used and supported widely.
 
 2.  I'm going to separate sslocal from sserver, which doesn't mean there will be two repositories, but the source code of them will be managed much more independently and clearly.

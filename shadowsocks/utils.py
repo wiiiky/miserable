@@ -35,7 +35,7 @@ def tobytes(data):
 
 def check_ip(address):
     """
-    checks to see if the address is a valid IP address
+    check to see if the address is a valid IP address
     """
     for family in (socket.AF_INET, socket.AF_INET6):
         try:

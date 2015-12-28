@@ -25,27 +25,32 @@ try:
     from shadowsocks import shell, daemon, eventloop, udprelay
     from shadowsocks.dns.resolver import DNSResolver
     from shadowsocks.tcp.proxy import TCPProxy
+    from shadowsocks.config import LocalConfig
+    from shadowsocks import log
 except ImportError as e:
     sys.path.append(os.path.curdir)
     from shadowsocks import shell, daemon, eventloop, udprelay
     from shadowsocks.dns.resolver import DNSResolver
     from shadowsocks.tcp.proxy import TCPProxy
+    from shadowsocks.config import LocalConfig
+    from shadowsocks import log
 
 
 def main():
     shell.check_python()
 
-    config = shell.get_config(True)
+    cfg = LocalConfig.get_config()
 
-    daemon.daemon_exec(config)
+    log.initialize(cfg['verbose'])
+    daemon.daemon_exec(cfg)
 
     try:
         logging.info('starting local at %s:%d' %
-                     (config['local_address'], config['local_port']))
+                     (cfg['local_address'], cfg['local_port']))
 
         dns_resolver = DNSResolver()
-        tcp_proxy = TCPProxy(config, dns_resolver)
-        udp_server = udprelay.UDPRelay(config, dns_resolver, True)
+        tcp_proxy = TCPProxy(cfg, dns_resolver)
+        udp_server = udprelay.UDPRelay(cfg, dns_resolver, True)
         loop = eventloop.EventLoop()
         dns_resolver.add_to_loop(loop)
         tcp_proxy.add_to_loop(loop)
@@ -57,7 +62,7 @@ def main():
             udp_server.close(next_tick=True)
         signal.signal(signal.SIGINT, sigint_handler)
 
-        daemon.set_user(config['user'])
+        daemon.set_user(cfg['user'])
         loop.run()
     except Exception as e:
         shell.print_exception(e)

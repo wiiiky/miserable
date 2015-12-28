@@ -100,7 +100,6 @@ class Peer(object):
             return None
         return self._socket.recv(self._bufsize)
 
-    @return_val_if_wouldblock(0)
     def write(self, data=b''):
         """write data if connected or buffer data"""
         data = data or b''

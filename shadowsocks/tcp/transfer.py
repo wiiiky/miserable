@@ -19,13 +19,11 @@ import time
 import socket
 import struct
 import logging
-import traceback
 from shadowsocks.utils import *
 from shadowsocks.exception import *
 from shadowsocks.eventloop import *
 from shadowsocks.protocol import *
 from shadowsocks.encrypt import Encryptor
-from shadowsocks.shell import print_exception
 
 from shadowsocks.tcp.client import ClientState, Client
 from shadowsocks.tcp.remote import Remote
@@ -52,8 +50,8 @@ class LocalTransfer(object):
     def __init__(self, config, loop, sock, addr, dns_resolver):
         self._cfg_password = config['password']
         self._cfg_method = config['method']
-        self._cfg_server = config['server']
-        self._cfg_server_port = config['server_port']
+        self._cfg_server = config['remote_address']
+        self._cfg_server_port = config['remote_port']
         self._cfg_verbose = config['verbose']
 
         self._encryptor = Encryptor(self._cfg_password, self._cfg_method)
@@ -186,6 +184,7 @@ class LocalTransfer(object):
 
     @stop_transfer_if_fail
     def _dns_resolved(self, result, error):
+        """remote ip address is resolved"""
         if error:
             self.stop(warning=error)
             return

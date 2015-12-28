@@ -87,11 +87,11 @@ class UDPRelay(object):
         if is_local:
             self._listen_addr = config['local_address']
             self._listen_port = config['local_port']
-            self._remote_addr = config['server']
-            self._remote_port = config['server_port']
+            self._remote_addr = config['remote_address']
+            self._remote_port = config['remote_port']
         else:
-            self._listen_addr = config['server']
-            self._listen_port = config['server_port']
+            self._listen_addr = config['remote_address']
+            self._listen_port = config['remote_port']
             self._remote_addr = None
             self._remote_port = None
         self._dns_resolver = dns_resolver
