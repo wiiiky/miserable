@@ -19,16 +19,25 @@ from shadowsocks.exception import *
 from shadowsocks.tcp.peer import Peer
 
 
-class Remote(Peer):
-    """manages the socket connect to remote"""
-
-    def connect(self, addr):
+def ignore_inprogress_exception(f):
+    def wrapper(*args, **kwargs):
         try:
-            return self._socket.connect(addr)
+            return f(*args, **kwargs)
         except (OSError, IOError) as e:
-            if exception_inprogress(e):
-                return
-            raise e
+            if not exception_inprogress(e):
+                raise e
+    return wrapper
+
+
+class Remote(Peer):
+    """
+    manages the socket connect to remote
+    encrypt everything
+    """
+
+    @ignore_inprogress_exception
+    def connect(self, addr):
+        return self._socket.connect(addr)
 
     def read(self):
         data = super(Remote, self).read()

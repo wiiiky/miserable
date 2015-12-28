@@ -31,12 +31,4 @@ class Client(Peer):
 
     def __init__(self, sock, addr, loop, encryptor=None):
         super(Client, self).__init__(sock, addr, loop, encryptor)
-        self._state = ClientState.INIT
-
-    @property
-    def state(self):
-        return self._state
-
-    @state.setter
-    def state(self, state):
-        self._state = state
+        self.state = ClientState.INIT

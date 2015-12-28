@@ -22,6 +22,12 @@ from shadowsocks.utils import *
 from shadowsocks.exception import InvalidHeaderException
 
 
+# SOCKS command definition
+class SOCKS5Command(object):
+    CONNECT = 1
+    BIND = 2
+    UDP_ASSOCIATE = 3
+
 ADDRTYPE_IPV4 = 1
 ADDRTYPE_IPV6 = 4
 ADDRTYPE_HOST = 3

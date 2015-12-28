@@ -40,7 +40,7 @@ class Peer(object):
     The base class that manages connection to specific peer.
     """
 
-    def __init__(self, sock, addr, loop, encryptor=None):
+    def __init__(self, sock, addr, loop, encryptor=None, bufsize=4096):
         """
         @sock the socket connected to the peer
         @addr (address, port) tuple
@@ -50,8 +50,8 @@ class Peer(object):
         self._socket = sock
         self._address = addr
         self._encryptor = encryptor
-        self._bufsize = 4096
-        self._sendbuf = b''
+        self._bufsize = bufsize
+        self._wbuf = b''
         self._loop = loop
         self._events = 0
 
@@ -100,35 +100,38 @@ class Peer(object):
             return None
         return self._socket.recv(self._bufsize)
 
+    @return_val_if_wouldblock(0)
     def write(self, data=b''):
         """write data if connected or buffer data"""
         data = data or b''
-        self._sendbuf += data
+        self._wbuf += data
         if not self.connected:
-            return
-        if self._sendbuf:
-            try:
-                total = len(self._sendbuf)
-                n = self._socket.send(self._sendbuf)
-                self._sendbuf = self._sendbuf[n:]
-            except (OSError, IOError) as e:
-                if not exception_wouldblock(e):
-                    raise e
+            return 0
+        self._write()
 
-        if self._sendbuf and not (self._events & POLL_OUT):
+        if self._wbuf and not (self._events & POLL_OUT):
             """
             not all data sent,
             monitor the POLL_OUT event so we can send them next time
             """
             self._events |= POLL_OUT
             self._loop.modify(self._socket, self._events)
-        elif not self._sendbuf and (self._events & POLL_OUT):
+        elif not self._wbuf and (self._events & POLL_OUT):
             """
             all data sent, but POLL_OUT is monitored,
             to avoid necessary POLL_OUT event, remove POLL_OUT.
             """
             self._events ^= POLL_OUT
             self._loop.modify(self._socket, self._events)
+
+    @return_val_if_wouldblock(0)
+    def _write(self):
+        if not self._wbuf:
+            return 0
+        total = len(self._wbuf)
+        n = self._socket.send(self._wbuf)
+        self._wbuf = self._wbuf[n:]
+        return n
 
     def close(self):
         if self._socket:

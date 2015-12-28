@@ -31,22 +31,14 @@ from shadowsocks.tcp.client import ClientState, Client
 from shadowsocks.tcp.remote import Remote
 
 
-# SOCKS command definition
-class SOCKS5Command(object):
-    CONNECT = 1
-    BIND = 2
-    UDP_ASSOCIATE = 3
-
-
 def stop_transfer_if_fail(f):
+    """stop transfer if unexpected exception occurs"""
     def wrapper(transfer, *args, **kwargs):
         try:
             return f(transfer, *args, **kwargs)
         except Exception as e:
             transfer.stop(warning='%s closed because of %s' %
                           (transfer.display_name, str(e)))
-            import traceback
-            traceback.print_exc(e)
     return wrapper
 
 
@@ -105,6 +97,7 @@ class LocalTransfer(object):
 
     @stop_transfer_if_fail
     def _handle_client(self, event):
+        """handle the client events"""
         data = None
         if event & POLL_IN:
             data = self._client.read()
@@ -121,7 +114,7 @@ class LocalTransfer(object):
         if self._client.state == ClientState.INIT:
             """
             receive HELLO message from client, shall we verify it ?
-            and send a HELLO back
+            send a HELLO back
             """
             self._client.write(b'\x05\00')  # HELLO
             self._client.state = ClientState.ADDR
@@ -175,7 +168,7 @@ class LocalTransfer(object):
 
     @stop_transfer_if_fail
     def _handle_remote(self, event):
-
+        """handle remote events"""
         if event & POLL_IN:
             data = self._remote.read()
             if data == b'':
@@ -204,6 +197,7 @@ class LocalTransfer(object):
         self._remote.start(POLL_ERR | POLL_OUT | POLL_IN, self)
 
     def stop(self, info=None, warning=None):
+        """stop transfer"""
         if self._closed:
             return
         if info:
