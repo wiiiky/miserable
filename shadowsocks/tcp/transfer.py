@@ -105,7 +105,9 @@ class LocalTransfer(object):
                 self.stop(info='client %s:%s closed' % self._client.address)
                 return
 
-        if self._client.state in (ClientState.INIT, ClientState.ADDR)\
+        if self._client.state == ClientState.UDP_ASSOC:
+            return
+        elif self._client.state in (ClientState.INIT, ClientState.ADDR)\
                 and not data:
             """in state INIT or ADDR, supposed to receive data from client"""
             self.stop(info='client %s:%s closed' % self._client.address)
@@ -138,7 +140,7 @@ class LocalTransfer(object):
                 addr_to_send = socket.inet_pton(family, addr)
                 port_to_send = struct.pack('!H', port)
                 self._client.write(header + addr_to_send + port_to_send)
-                self._client.stage = STAGE_UDP_ASSOC
+                self._client.state = ClientState.UDP_ASSOC
                 # just wait for the client to disconnect
                 return
             elif cmd != SOCKS5Command.CONNECT:
