@@ -171,7 +171,7 @@ class LocalTransfer(object):
         if event & POLL_IN:
             data = self._remote.read()
             if data == b'':
-                self.stop(info=('remote %s:%s closed' % self._remote.address))
+                self.stop(info=('remote %s:%s closed' % self._server_address))
                 return
             self._client.write(data)
 
