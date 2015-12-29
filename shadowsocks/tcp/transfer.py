@@ -59,6 +59,8 @@ class LocalTransfer(object):
         self._server_address = None
         self._dns_resolver = dns_resolver
         self._last_active = time.time()
+        self._local_address = cfg['local_address']
+        self._local_port = cfg['local_port']
 
     @property
     def closed(self):
@@ -121,41 +123,30 @@ class LocalTransfer(object):
             receive the server addr,
             give client a feedback and connect to remote
             """
-            vsn = data[0]
-            cmd = data[1]
-            if vsn != 5:
-                raise InvalidSockVersionException(vsn)
+            vsn, cmd, atype, server_addr, server_port = parse_request(data)
             if cmd == SOCKS5Command.UDP_ASSOCIATE:
                 DEBUG('UDP associate')
-                family = self._client.socket.family
-                if family == socket.AF_INET6:
-                    header = b'\x05\x00\x00\x04'
-                else:
-                    header = b'\x05\x00\x00\x01'
-                addr, port = self._client.address
-                addr_to_send = socket.inet_pton(family, addr)
-                port_to_send = struct.pack('!H', port)
-                self._client.write(header + addr_to_send + port_to_send)
+                self._client.write(build_reply(5, 0, 0,
+                                               self._client.address[0],
+                                               self._client.address[1]))
                 self._client.state = ClientState.UDP_ASSOC
                 # just wait for the client to disconnect
                 return
             elif cmd != SOCKS5Command.CONNECT:
                 raise UnknownCommandException(cmd)
-            else:
-                # just trim VER CMD RSV
-                data = data[3:]
-            addrtype, server_addr, server_port, length = parse_header(data)
+
             server_addr = tostr(server_addr)
             INFO('connecting %s:%d from %s:%d' %
                  (server_addr, server_port, self._client.address[0],
                   self._client.address[1]))
             self._server_address = (server_addr, server_port)
             # forward address to remote
-            self._client.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x10\x10')
+            self._client.write(build_reply(5, 0, 0, self._local_address,
+                                           self._local_port))
             self._client.state = ClientState.DNS
             self._remote = Remote(None, self._remote_address, self._loop,
                                   self._encryptor)
-            self._remote.write(data)
+            self._remote.write(data[3:])
             self._dns_resolver.resolve(self._remote_address[0],
                                        self._dns_resolved)
         elif data and self._remote:

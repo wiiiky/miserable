@@ -4,6 +4,8 @@
 我在网上很难找到Shadowsocks（以下简称为SS）的协议说明，唯一找到的是https://shadowsocks.org/en/spec/protocol.html。
 而且也不详细。因此我自己利用Wireshark结合SS的源代码进行解析，并将解析的结果记录在此。
 
+Shadowsocks基于SOCKS5，因此一些细节请看https://www.ietf.org/rfc/rfc1928.txt。
+
 定义
     client是用户程序，如浏览器；
     local是本地运行的SS代理，即sslocal；
@@ -35,32 +37,51 @@ DOWNSTREAM
 CLIENT <==> LOCAL   【TCP】
     0. local启动并监听指定端口号。
     1. client向local发起连接。
-    2. client向local发送初始化数据\x05\x01\x00，local向client返回\x05\x00表示初始化成功。
-        * 代码中显示client可以发送任意的初始化数据，local并不检查，但wireshark显示它总是\x05\x01\x00。
-    3. client向local发送已\x05\x01\x00开始后面跟着
-        +--------------+---------------------+------------------+----------+
-        | Address Type | Destination Address | Destination Port |   Data   |
-        +--------------+---------------------+------------------+----------+
-        |      1       |       Variable      |         2        | Variable |
-        +--------------+---------------------+------------------+----------+
-        在这里\x05表示版本为5，\x01表示连接服务器请求，\x00暂时未知。
-        Address Type可以是1(IPv4), 4(IPv6), 3(域名)；
-        如果是IPv4地址，则Destination Address占用4个字节，
-        如果是IPv6地址，则Destination Address占用16个字节，
-        如果是域名，则Destination Address已一个表示域名长度字节开始后面紧跟域名，因此域名最长为255字节。
-        Destination Port是两个字节的端口号。
-        Data为空。
+    2. client向local发送初始化数据\x05\x01\x00，下图表示该数据结构，第二行的数字表示长度。
+       +----+----------+----------+
+       |VER | NMETHODS | METHODS  |
+       +----+----------+----------+
+       | 1  |    1     | 1 to 255 |
+       +----+----------+----------+
+       代码中显示client可以发送任意的初始化数据，local并不检查，但wireshark显示它总是\x05\x01\x00。
+       VER是\x05表示SOCKS版本为5，NMETHODS是\x01表示METHODS字段的长度为1，METHODS字段为\x00表示不需要认证。
+    3. local向client返回\x05\x00表示握手成功。
+       +----+--------+
+       |VER | METHOD |
+       +----+--------+
+       | 1  |   1    |
+       +----+--------+
+       同上VER表示SOCKS版本5，METHOD表示接收的认证方式为不需要认证。
+    3. client向local发送下面格式的数据，
+        +----+-----+-------+------+----------+----------+
+        |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+        +----+-----+-------+------+----------+----------+
+        | 1  |  1  | X'00' |  1   | Variable |    2     |
+        +----+-----+-------+------+----------+----------+
+        VER表示SOCKS版本5，\x01表示连接服务器请求，RSV总是为0。
+        ATYPE表示连接目标的地址类型，可以是1(IPv4), 4(IPv6), 3(域名)；
+        如果是IPv4地址，则DST.ADDR占用4个字节，
+        如果是IPv6地址，则DST.ADDR占用16个字节，
+        如果是域名，则DST.ADDR已一个表示域名长度字节开始后面紧跟域名，因此域名最长为255字节。
+        DST.PORT是两个字节的端口号。
         
-        发起对www.google.com连接的请求数据如下：
+        因此，发起对www.google.com连接的请求数据如下：
         05 01 00 03 0e 77 77 77 2e 67 6f 6f 67 6c 65 2e    .....www.google.
         63 6f 6d 01 bb                                     com..
 
         前三个字节是命令字段05 01 00，03表示这是一个域名，0e即14表示的是www.google.com的长度。
         后面的十四个字节则是www.google.com的二进制形式。最后的两个字节01 bb表示端口号443。
     4. local收到client的连接请求后如果验证没有错误，则返回
-        \x05\x00\x00\x01\x00\x00\x00\x00\x10\x10
-       同时向remote发起链接。
-       在此之后client和local的数据交互都是正常的TCP数据流，没有特殊字段也不需要加密。
+        +----+-----+-------+------+----------+----------+
+        |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
+        +----+-----+-------+------+----------+----------+
+        | 1  |  1  | X'00' |  1   | Variable |    2     |
+        +----+-----+-------+------+----------+----------+
+        VER表示SOCKS版本5，REP表示请求结果，\x00表示成功，RSV总是为0。
+        ATYP,表示绑定的地址类型，1(IPv4), 4(IPv6), 3(域名)。
+        BND.ADDR表示绑定的地址，BND.PORT端口号。
+        同时向remote发起链接。
+    5. 在此之后client和local的数据交互都是正常的TCP数据流，没有特殊字段也不需要加密。
 
 LOCAL <==> REMOTE   【TCP】
     0. remote启动并监听指定端口号。

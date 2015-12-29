@@ -45,3 +45,11 @@ def check_ip(address):
         except (TypeError, ValueError, OSError, IOError):
             pass
     return False
+
+
+def convert_address(ip):
+    """convert dotted ip address to bytes"""
+    try:
+        return socket.AF_INET, socket.inet_pton(socket.AF_INET, ip)
+    except OSError:
+        return socket.AF_INET6, socket.inet_pton(socket.AF_INET6, ip)

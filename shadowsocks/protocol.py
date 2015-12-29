@@ -16,10 +16,14 @@
 
 import socket
 import struct
-import logging
 
 from shadowsocks.utils import *
-from shadowsocks.exception import InvalidHeaderException
+from shadowsocks.exception import *
+
+
+"""
+https://www.ietf.org/rfc/rfc1928.txt
+"""
 
 
 # SOCKS command definition
@@ -30,36 +34,40 @@ class SOCKS5Command(object):
 
 ADDRTYPE_IPV4 = 1
 ADDRTYPE_IPV6 = 4
-ADDRTYPE_HOST = 3
+ADDRTYPE_DOMAIN = 3
 
 
-def parse_header(data):
-    addrtype = data[0]
-    dest_addr = None
-    dest_port = None
-    header_length = 0
-    if addrtype == ADDRTYPE_IPV4:
-        if len(data) < 7:
-            raise InvalidHeaderException('IPv4 header is too short')
-        dest_addr = socket.inet_ntoa(data[1:5])
-        dest_port = struct.unpack('!H', data[5:7])[0]
-        header_length = 7
-    elif addrtype == ADDRTYPE_HOST:
-        if len(data) <= 2:
-            raise InvalidHeaderException('Host header is too short')
-        addrlen = data[1]
-        if len(data) < 2 + addrlen:
-            raise InvalidHeaderException('Host header is too short')
+def parse_request(data):
+    """parse SOCKS5 request"""
+    vsn = data[0]
+    cmd = data[1]
+    if vsn != 5:
+        raise InvalidSockVersionException(vsn)
+    elif cmd not in (SOCKS5Command.CONNECT, SOCKS5Command.BIND,
+                     SOCKS5Command.UDP_ASSOCIATE):
+        raise InvalidRequestException('invalid request command')
 
-        dest_addr = data[2:2 + addrlen]
-        dest_port = struct.unpack('!H', data[2 + addrlen:4 + addrlen])[0]
-        header_length = 4 + addrlen
-    elif addrtype == ADDRTYPE_IPV6:
-        if len(data) < 19:
-            raise InvalidHeaderException('IPv6 header is too short')
+    data = data[3:]     # skip vsn,cmd,rsv
+    atype = data[0]
+    if atype == ADDRTYPE_IPV4:
+        dest_addr = socket.inet_ntop(socket.AF_INET, data[1:5])
+        dest_port = struct.unpack('!H', data[5:7])
+    elif atype == ADDRTYPE_IPV6:
         dest_addr = socket.inet_ntop(socket.AF_INET6, data[1:17])
         dest_port = struct.unpack('!H', data[17:19])[0]
-        header_length = 19
+    elif atype == ADDRTYPE_DOMAIN:
+        dlen = data[1]
+        dest_addr = data[2:2 + dlen]
+        dest_port = struct.unpack('!H', data[2 + dlen:4 + dlen])[0]
     else:
-        raise InvalidHeaderException('unknown header type %s' % addrtype)
-    return addrtype, tobytes(dest_addr), dest_port, header_length
+        raise InvalidRequestException('unknown address type')
+    return vsn, cmd, atype, dest_addr, dest_port
+
+
+def build_reply(vsn, rep, rsv, bind_addr, bind_port):
+    """build a SOCKS5 reply"""
+    family, bind_addr = convert_address(bind_addr)
+    atype = 1 if family == socket.AF_INET else 4
+    data = struct.pack('!BBBB', vsn, rep, rsv, atype) + bind_addr\
+        + struct.pack('!H', bind_port)
+    return data

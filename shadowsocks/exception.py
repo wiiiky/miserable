@@ -85,5 +85,5 @@ class UnexpectedEventError(BaseException):
     pass
 
 
-class InvalidHeaderException(BaseException):
+class InvalidRequestException(BaseException):
     pass
