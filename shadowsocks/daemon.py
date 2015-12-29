@@ -23,6 +23,7 @@ import sys
 import signal
 import time
 from shadowsocks.log import *
+from shadowsocks.utils import *
 from shadowsocks import common, shell
 
 # this module is ported from ShadowVPN daemon.c
@@ -72,9 +73,9 @@ def write_pid_file(pid_file, pid):
     except IOError:
         r = os.read(fd, 32)
         if r:
-            ERROR('already started at pid %s' % common.to_str(r))
+            PRINT('miserable is already running(PID=%s)!' % tostr(r))
         else:
-            ERROR('already started')
+            PRINT('miserable is already running(fail to get PID)!')
         os.close(fd)
         return -1
     os.ftruncate(fd, 0)
@@ -119,16 +120,8 @@ def daemon_start(pid_file, log_file):
     os.setsid()
     signal.signal(signal.SIG_IGN, signal.SIGHUP)
 
-    print('started')
+    PRINT('started')
     os.kill(ppid, signal.SIGTERM)
-
-    sys.stdin.close()
-    try:
-        freopen(log_file, 'a', sys.stdout)
-        freopen(log_file, 'a', sys.stderr)
-    except IOError as e:
-        shell.print_exception(e)
-        sys.exit(1)
 
 
 def daemon_stop(pid_file):
@@ -138,12 +131,11 @@ def daemon_stop(pid_file):
             buf = f.read()
             pid = common.to_str(buf)
             if not buf:
-                ERROR('not running')
+                PRINT('miserable is not running')
     except IOError as e:
-        shell.print_exception(e)
         if e.errno == errno.ENOENT:
             # always exit 0 if we are sure daemon is not running
-            ERROR('not running')
+            PRINT('miserable is not running')
             return
         sys.exit(1)
     pid = int(pid)
@@ -152,13 +144,13 @@ def daemon_stop(pid_file):
             os.kill(pid, signal.SIGTERM)
         except OSError as e:
             if e.errno == errno.ESRCH:
-                ERROR('not running')
+                PRINT('miserable is not running')
                 # always exit 0 if we are sure daemon is not running
                 return
             shell.print_exception(e)
             sys.exit(1)
     else:
-        ERROR('pid is not positive: %d', pid)
+        PRINT('invalid pid file!')
 
     # sleep for maximum 10s
     for i in range(0, 200):
@@ -170,9 +162,9 @@ def daemon_stop(pid_file):
                 break
         time.sleep(0.05)
     else:
-        ERROR('timed out when stopping pid %d', pid)
+        PRINT('timed out when stopping pid %d' % pid)
         sys.exit(1)
-    print('stopped')
+    PRINT('stopped')
     os.unlink(pid_file)
 
 

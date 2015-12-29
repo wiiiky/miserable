@@ -64,6 +64,12 @@ def logging_init(cfg):
     logging.basicConfig(**config)
 
 
+def PRINT(text):
+    """JUST make function looks similar
+    """
+    print(text)
+
+
 def INFO(text):
     logging.info(colored(text, 'cyan'))
 
