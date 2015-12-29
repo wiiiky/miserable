@@ -20,9 +20,9 @@ from __future__ import absolute_import, division, print_function, \
 
 import os
 import sys
-import logging
 import signal
 import time
+from shadowsocks.log import *
 from shadowsocks import common, shell
 
 # this module is ported from ShadowVPN daemon.c
@@ -72,9 +72,9 @@ def write_pid_file(pid_file, pid):
     except IOError:
         r = os.read(fd, 32)
         if r:
-            logging.error('already started at pid %s' % common.to_str(r))
+            ERROR('already started at pid %s' % common.to_str(r))
         else:
-            logging.error('already started')
+            ERROR('already started')
         os.close(fd)
         return -1
     os.ftruncate(fd, 0)
@@ -138,12 +138,12 @@ def daemon_stop(pid_file):
             buf = f.read()
             pid = common.to_str(buf)
             if not buf:
-                logging.error('not running')
+                ERROR('not running')
     except IOError as e:
         shell.print_exception(e)
         if e.errno == errno.ENOENT:
             # always exit 0 if we are sure daemon is not running
-            logging.error('not running')
+            ERROR('not running')
             return
         sys.exit(1)
     pid = int(pid)
@@ -152,13 +152,13 @@ def daemon_stop(pid_file):
             os.kill(pid, signal.SIGTERM)
         except OSError as e:
             if e.errno == errno.ESRCH:
-                logging.error('not running')
+                ERROR('not running')
                 # always exit 0 if we are sure daemon is not running
                 return
             shell.print_exception(e)
             sys.exit(1)
     else:
-        logging.error('pid is not positive: %d', pid)
+        ERROR('pid is not positive: %d', pid)
 
     # sleep for maximum 10s
     for i in range(0, 200):
@@ -170,7 +170,7 @@ def daemon_stop(pid_file):
                 break
         time.sleep(0.05)
     else:
-        logging.error('timed out when stopping pid %d', pid)
+        ERROR('timed out when stopping pid %d', pid)
         sys.exit(1)
     print('stopped')
     os.unlink(pid_file)
@@ -186,7 +186,7 @@ def set_user(username):
     try:
         pwrec = pwd.getpwnam(username)
     except KeyError:
-        logging.error('user not found: %s' % username)
+        ERROR('user not found: %s' % username)
         raise
     user = pwrec[0]
     uid = pwrec[2]
@@ -196,7 +196,7 @@ def set_user(username):
     if uid == cur_uid:
         return
     if cur_uid != 0:
-        logging.error('can not set user as nonroot user')
+        ERROR('can not set user as nonroot user')
         # will raise later
 
     # inspired by supervisor

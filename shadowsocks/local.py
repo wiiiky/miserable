@@ -40,7 +40,7 @@ def main():
 
     cfg = LocalConfig.get_config()
 
-    logging_init(cfg['verbose'])
+    logging_init(cfg)
     daemon.daemon_exec(cfg)
 
     try:

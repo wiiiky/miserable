@@ -22,8 +22,21 @@ VERBOSE_LEVEL = 5
 
 verbose_level = 0
 
+colored = lambda text, color, attrs=(): text
 
-def logging_init(verbose):
+
+def enable_termcolor():
+    """if termcolor installed, use it to print colorful logging"""
+    global colored
+    try:
+        import termcolor
+        colored = termcolor.colored
+    except:
+        pass
+
+
+def logging_init(cfg):
+    verbose = cfg['verbose']
     logging.getLogger('').handlers = []
     logging.addLevelName(VERBOSE_LEVEL, 'VERBOSE')
     if verbose >= 2:
@@ -37,16 +50,18 @@ def logging_init(verbose):
     else:
         level = logging.INFO
     verbose_level = verbose
-    logging.basicConfig(level=level,
-                        format='%(asctime)s %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
 
-try:
-    """if termcolor installed, use it to print colorful logging"""
-    from termcolor import colored
-except ImportError:
-    def colored(text, color):
-        return text
+    config = {
+        'level': level,
+        'format': '%(asctime)s %(levelname)-8s %(message)s',
+        'datefmt': '%m-%d %H:%M:%S'
+    }
+    if cfg['daemon'] == 'start' and cfg['log-file']:
+        config['filename'] = cfg['log-file']
+    else:
+        """only enable colorful logging when log to terminal"""
+        enable_termcolor()
+    logging.basicConfig(**config)
 
 
 def INFO(text):
