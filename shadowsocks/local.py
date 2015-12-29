@@ -17,7 +17,6 @@
 
 import sys
 import os
-import logging
 import signal
 
 
@@ -26,14 +25,14 @@ try:
     from shadowsocks.dns.resolver import DNSResolver
     from shadowsocks.tcp.proxy import TCPProxy
     from shadowsocks.config import LocalConfig
-    from shadowsocks import log
+    from shadowsocks.log import *
 except ImportError as e:
     sys.path.append(os.path.curdir)
     from shadowsocks import shell, daemon, eventloop, udprelay
     from shadowsocks.dns.resolver import DNSResolver
     from shadowsocks.tcp.proxy import TCPProxy
     from shadowsocks.config import LocalConfig
-    from shadowsocks import log
+    from shadowsocks.log import *
 
 
 def main():
@@ -41,12 +40,12 @@ def main():
 
     cfg = LocalConfig.get_config()
 
-    log.initialize(cfg['verbose'])
+    logging_init(cfg['verbose'])
     daemon.daemon_exec(cfg)
 
     try:
-        logging.info('starting local at %s:%d' %
-                     (cfg['local_address'], cfg['local_port']))
+        INFO('starting local at %s:%d' %
+             (cfg['local_address'], cfg['local_port']))
 
         dns_resolver = DNSResolver()
         tcp_proxy = TCPProxy(dns_resolver)
@@ -57,7 +56,7 @@ def main():
         udp_server.add_to_loop(loop)
 
         def sigint_handler(signum, _):
-            logging.warn('received SIGINT, doing graceful shutting down..')
+            DEBUG('received SIGINT, doing graceful shutting down..')
             tcp_proxy.close(next_tick=True)
             udp_server.close(next_tick=True)
         signal.signal(signal.SIGINT, sigint_handler)
@@ -65,7 +64,7 @@ def main():
         daemon.set_user(cfg['user'])
         loop.run()
     except Exception as e:
-        shell.print_exception(e)
+        ERROR(str(e))
         sys.exit(1)
 
 if __name__ == '__main__':

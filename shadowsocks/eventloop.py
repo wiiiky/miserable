@@ -26,9 +26,9 @@ import time
 import socket
 import select
 import errno
-import logging
 from collections import defaultdict
 
+from shadowsocks.log import *
 from shadowsocks import shell
 
 
@@ -163,7 +163,7 @@ class EventLoop(object):
         self._last_time = time.time()
         self._periodic_callbacks = []
         self._stopping = False
-        logging.debug('using event model: %s', model)
+        DEBUG('using event model: %s' % model)
 
     def poll(self, timeout=None):
         events = self._impl.poll(timeout)
@@ -204,9 +204,9 @@ class EventLoop(object):
                     # EINTR: Happens when received a signal
                     # handles them as soon as possible
                     asap = True
-                    logging.debug('poll:%s', e)
+                    DEBUG('poll:%s' % e)
                 else:
-                    logging.error('poll:%s', e)
+                    ERROR('poll:%s' % e)
                     import traceback
                     traceback.print_exc()
                     continue

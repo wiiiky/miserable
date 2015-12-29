@@ -63,7 +63,7 @@ class InvalidAddressException(BaseException):
 class UnsupportFeatureException(BaseException):
 
     def __init__(self, feature):
-        msg = u'%s is not supported by you system!' % (feature, )
+        msg = u'%s is not supported or enabled!' % (feature, )
         super(UnsupportFeatureException, self).__init__(msg)
 
 

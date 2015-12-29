@@ -23,7 +23,7 @@ VERBOSE_LEVEL = 5
 verbose_level = 0
 
 
-def initialize(verbose):
+def logging_init(verbose):
     logging.getLogger('').handlers = []
     logging.addLevelName(VERBOSE_LEVEL, 'VERBOSE')
     if verbose >= 2:
@@ -40,3 +40,30 @@ def initialize(verbose):
     logging.basicConfig(level=level,
                         format='%(asctime)s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
+
+try:
+    """if termcolor installed, use it to print colorful logging"""
+    from termcolor import colored
+except ImportError:
+    def colored(text, color):
+        return text
+
+
+def INFO(text):
+    logging.info(colored(text, 'cyan'))
+
+
+def VERBOSE(text):
+    logging.info(colored(text, 'green'))
+
+
+def DEBUG(text):
+    logging.debug(colored(text, 'blue'))
+
+
+def WARN(text):
+    logging.warn(colored(text, 'yellow', attrs=('bold', )))
+
+
+def ERROR(text):
+    logging.error(colored(text, 'red', attrs=('bold', )))

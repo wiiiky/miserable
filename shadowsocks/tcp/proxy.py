@@ -17,7 +17,7 @@
 
 import time
 import socket
-import logging
+from shadowsocks.log import *
 from shadowsocks.exception import *
 from shadowsocks.eventloop import *
 
@@ -46,9 +46,11 @@ class TCPProxy(object):
         sock.setblocking(False)
 
         if cfg['fast_open']:
-            if not hasattr(socket, 'TCP_FASTOPEN'):
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.TCP_FASTOPEN, 5)
+            except (OSError, AttributeError) as e:
                 raise UnsupportFeatureException('TCP Fast Open')
-            sock.setsockopt(socket.SOL_SOCKET, socket.TCP_FASTOPEN, 5)
+            VERBOSE('fast open enabled!')
         sock.listen(1024)
 
         self._dns_resolver = dns_resolver
@@ -77,7 +79,7 @@ class TCPProxy(object):
     @return_val_if_wouldblock(None)
     def _accept(self):
         client, addr = self._socket.accept()
-        logging.debug('accept %s:%s' % addr)
+        DEBUG('accept %s:%s' % addr)
         transfer = LocalTransfer(self._loop, client, addr, self._dns_resolver)
         transfer.start()
         self._transfers.append(transfer)
@@ -108,9 +110,9 @@ class TCPProxy(object):
             self._close()
 
     def _close(self):
-        if not self._socket:
+        if self._socket is None:
             return
-        logging.info('close TCP %s:%s' % self._local_address)
+        INFO('close TCP %s:%s' % self._local_address)
         self._loop.remove(self._socket)
         self._socket.close()
         self._socket = None

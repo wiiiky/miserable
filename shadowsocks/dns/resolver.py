@@ -19,9 +19,9 @@ import os
 import socket
 import struct
 import re
-import logging
 
 from shadowsocks import lru_cache, eventloop
+from shadowsocks.log import *
 from shadowsocks.dns.protocol import *
 from shadowsocks.utils import *
 
@@ -112,7 +112,7 @@ class DNSResolver(object):
         if sock != self._sock:
             return
         if event & eventloop.POLL_ERR:
-            logging.error('dns socket err')
+            ERROR('dns socket err')
             self._loop.remove(self._sock)
             self._sock.close()
             self._refresh()
@@ -135,18 +135,18 @@ class DNSResolver(object):
                     if hostname in self._hostname_status:
                         del self._hostname_status[hostname]
 
-    def resolve(self, hostname, callback):
-        hostname = tobytes(hostname)
+    def resolve(self, host, callback):
+        hostname = tobytes(host)
         if not hostname:
             callback(None, Exception('empty hostname'))
         elif check_ip(hostname):
             callback((hostname, hostname), None)
         elif hostname in self._hosts:
-            logging.debug('hit hosts: %s', hostname)
+            DEBUG('hit hosts: %s' % host)
             ip = self._hosts[hostname]
             callback((hostname, ip), None)
         elif hostname in self._cache:
-            logging.debug('hit cache: %s', hostname)
+            DEBUG('hit cache: %s' % host)
             ip = self._cache[hostname]
             callback((hostname, ip), None)
         else:

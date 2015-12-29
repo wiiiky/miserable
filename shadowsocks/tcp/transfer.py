@@ -18,7 +18,7 @@
 import time
 import socket
 import struct
-import logging
+from shadowsocks.log import *
 from shadowsocks.utils import *
 from shadowsocks.exception import *
 from shadowsocks.eventloop import *
@@ -59,11 +59,10 @@ class LocalTransfer(object):
         self._server_address = None
         self._dns_resolver = dns_resolver
         self._last_active = time.time()
-        self._closed = False
 
     @property
     def closed(self):
-        return self._closed
+        return self._client is None
 
     @property
     def last_active(self):
@@ -127,7 +126,7 @@ class LocalTransfer(object):
             if vsn != 5:
                 raise InvalidSockVersionException(vsn)
             if cmd == SOCKS5Command.UDP_ASSOCIATE:
-                logging.debug('UDP associate')
+                DEBUG('UDP associate')
                 family = self._client.socket.family
                 if family == socket.AF_INET6:
                     header = b'\x05\x00\x00\x04'
@@ -147,9 +146,9 @@ class LocalTransfer(object):
                 data = data[3:]
             addrtype, server_addr, server_port, length = parse_header(data)
             server_addr = tostr(server_addr)
-            logging.info('connecting %s:%d from %s:%d' %
-                         (server_addr, server_port, self._client.address[0],
-                          self._client.address[1]))
+            INFO('connecting %s:%d from %s:%d' %
+                 (server_addr, server_port, self._client.address[0],
+                  self._client.address[1]))
             self._server_address = (server_addr, server_port)
             # forward address to remote
             self._client.write(b'\x05\x00\x00\x01\x00\x00\x00\x00\x10\x10')
@@ -198,13 +197,13 @@ class LocalTransfer(object):
 
     def stop(self, info=None, warning=None):
         """stop transfer"""
-        if self._closed:
+        if self._client is None:
             return
         if info:
-            logging.info(info)
+            INFO(info)
         elif warning:
-            logging.warn(warning)
-        self._closed = True
+            WARN(warning)
         self._client.close()
+        self._client = None
         if self._remote:
             self._remote.close()
