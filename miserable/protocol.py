@@ -54,7 +54,7 @@ def parse_request(data):
     atype = data[0]
     if atype == ADDRTYPE_IPV4:
         dest_addr = socket.inet_ntop(socket.AF_INET, data[1:5])
-        dest_port = struct.unpack('!H', data[5:7])
+        dest_port = struct.unpack('!H', data[5:7])[0]
     elif atype == ADDRTYPE_IPV6:
         dest_addr = socket.inet_ntop(socket.AF_INET6, data[1:17])
         dest_port = struct.unpack('!H', data[17:19])[0]
