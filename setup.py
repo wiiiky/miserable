@@ -7,22 +7,22 @@ with codecs.open('README.origin.rst', encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
-    name='shadowsocks',
-    version='2.8.2',
+    name='miserable',
+    version='1.0',
     license='http://www.apache.org/licenses/LICENSE-2.0',
     description="A fast tunnel proxy that help you get through firewalls",
     author='Wiky',
     author_email='wiiiky@outlook.com',
     url='https://github.com/wiiiky/miserable',
-    packages=['shadowsocks', 'shadowsocks.crypto', 'shadowsocks.dns', 'shadowsocks.tcp'],
+    packages=['miserable', 'miserable.crypto',
+              'miserable.dns', 'miserable.tcp'],
     package_data={
-        'shadowsocks': ['README.rst', 'LICENSE']
+        'miserable': ['README.rst', 'LICENSE']
     },
     install_requires=[],
     entry_points="""
     [console_scripts]
-    sslocal = shadowsocks.local:main
-    ssserver = shadowsocks.server:main
+    mislocal = miserable.local:main
     """,
     classifiers=[
         'License :: OSI Approved :: Apache Software License',
