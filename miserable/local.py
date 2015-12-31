@@ -62,7 +62,8 @@ def main():
         daemon.set_user(cfg['user'])
         loop.run()
     except Exception as e:
-        ERROR(str(e))
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == '__main__':

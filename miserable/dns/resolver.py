@@ -23,8 +23,9 @@ import socket
 import struct
 import re
 
-from miserable import lru_cache, eventloop
+from miserable import eventloop
 from miserable.log import *
+from miserable.cache import LRUCache
 from miserable.dns.protocol import *
 from miserable.utils import *
 
@@ -55,7 +56,7 @@ class DNSResolver(object):
         self._hostname_status = {}
         self._hostname_to_cb = {}
         self._cb_to_hostname = {}
-        self._cache = lru_cache.LRUCache(timeout=300)
+        self._cache = LRUCache(timeout=300, **self._hosts)
         self._sock = None
         # TODO monitor hosts change and reload hosts
         # TODO parse /etc/gai.conf and follow its rules
@@ -88,6 +89,10 @@ class DNSResolver(object):
         if hostname in self._hostname_status:
             del self._hostname_status[hostname]
 
+    def _send_request(self, hostname, atype=TYPE.A):
+        DEBUG('query DNS %s' % hostname)
+        self._sock.send_dns_request(hostname, atype)
+
     def _handle_response(self, response):
         if not response:
             return
@@ -101,7 +106,7 @@ class DNSResolver(object):
         if not ip and self._hostname_status.get(hostname, STATUS_IPV6) \
                 == STATUS_IPV4:
             self._hostname_status[hostname] = STATUS_IPV6
-            self._sock.send_dns_request(hostname, TYPE.AAAA)
+            self.send_request(hostname, TYPE.AAAA)
         elif ip:
             self._cache[hostname] = ip
             self._call_callback(hostname, ip)
@@ -144,10 +149,6 @@ class DNSResolver(object):
             callback(None, Exception('empty hostname'))
         elif check_ip(hostname):
             callback((hostname, hostname), None)
-        elif hostname in self._hosts:
-            DEBUG('hit hosts: %s' % host)
-            ip = self._hosts[hostname]
-            callback((hostname, ip), None)
         elif hostname in self._cache:
             DEBUG('hit cache: %s' % host)
             ip = self._cache[hostname]
@@ -161,11 +162,11 @@ class DNSResolver(object):
                 self._hostname_status[hostname] = STATUS_IPV4
                 self._hostname_to_cb[hostname] = [callback]
                 self._cb_to_hostname[callback] = hostname
-                self._sock.send_dns_request(hostname)
+                self._send_request(hostname)
             else:
                 arr.append(callback)
                 # TODO send again only if waited too long
-                self._sock.send_dns_request(hostname)
+                self._send_request(hostname)
 
     def close(self):
         if self._sock:
