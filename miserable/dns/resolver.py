@@ -20,20 +20,94 @@ from __future__ import absolute_import, division, print_function, \
 
 import os
 import socket
-import struct
 
 from miserable import eventloop
 from miserable.log import *
 from miserable.cache import LRUCache
 from miserable.dns.protocol import *
+from miserable.dns.utils import *
 from miserable.utils import *
 
 
 CACHE_SWEEP_INTERVAL = 30
 
 
-STATUS_IPV4 = 0
-STATUS_IPV6 = 1
+class Socket(socket.socket):
+
+    def __init__(self, servers, timeout=60):
+        """
+        use IPv6 socket
+        convert the ipv4 address to ipv4-mapped ipv6 address
+        """
+        self._id = 0
+        self._wait4 = {}
+        self._wait6 = {}
+        self._timeout = timeout
+        self._servers = [ipv6_address(s) for s in servers]\
+            if hasattr(servers, '__iter__') else [ipv6_address(servers)]
+        super(Socket, self).__init__(socket.AF_INET6, socket.SOCK_DGRAM,
+                                     socket.SOL_UDP)
+
+    def recvfrom(self, bufsize):
+        data, addrinfo = super(Socket, self).recvfrom(bufsize)
+        return data, ip_address(addrinfo[0])
+
+    def send_dns_request(self, hostname):
+        """send IPv6 and IPv4 DNS query at the same time"""
+        request4 = Request(hostname, TYPE.A, mid=self._id)
+        request6 = Request(hostname, TYPE.AAAA, mid=self._id)
+        for saddr in self._servers:
+            self.sendto(request4.bytes, (saddr.compressed, 53))
+            self.sendto(request6.bytes, (saddr.compressed, 53))
+        self._wait4[self._id] = time.time()
+        self._wait6[self._id] = time.time()
+        self._increase_id()
+
+    def recv_dns_response(self):
+        """receive and parse DNS response
+        """
+        self._check_timeout()
+        data, addr = self.recvfrom(1024)
+        if not self. _check_server(addr):
+            DEBUG('receive DNS response from unknown server %s' % addr)
+            return
+        response = Response(data)
+        DEBUG('receive DNS response %s ' % response)
+        if response.mid in self._wait4 and response.qtype == TYPE.A:
+            del self._wait4[response.mid]
+            if response.is_valid() and response.mid in self._wait6:
+                """if this is a valid IPv4 response then we ignore IPv6"""
+                del self._wait6[response.mid]
+            return response
+        elif response.mid in self._wait6 and response.qtype == TYPE.AAAA:
+            del self._wait6[response.mid]
+            if response.is_valid() and response.mid in self._wait4:
+                """if this is a valid IPv6 response then we ignore IPv4"""
+                del self._wait4[response.mid]
+            return response
+        return None
+
+    def _increase_id(self):
+        self._id += 1
+        if self._id > 65535:
+            """two bytes for message ID"""
+            self._id = 0
+
+    def _check_timeout(self):
+        now = time.time()
+
+        def kick(wait):
+            for mid, t in list(wait.items()):
+                if now - t > self._timeout:
+                    del wait[mid]
+        kick(self._wait4)
+        kick(self._wait6)
+
+    def _check_server(self, addr):
+        for server in self._servers:
+            if server.compressed == addr.compressed:
+                return True
+        return False
 
 
 class DNSResolver(object):
@@ -50,7 +124,7 @@ class DNSResolver(object):
 
     def _refresh(self):
         # create or refresh DNS socket
-        self._sock = DNSSocket(self._servers)
+        self._sock = Socket(self._servers)
         self._sock.setblocking(False)
         self._loop.add(self._sock, eventloop.POLL_IN, self)
 
@@ -100,16 +174,14 @@ class DNSResolver(object):
 
     def resolve(self, host, callback):
         hostname = tobytes(host)
-        if not hostname:
-            callback(None, Exception('empty hostname'))
+        if not hostname or not check_hostname(hostname):
+            callback(None, Exception('invalid hostname: %s' % hostname))
         elif check_ip(hostname):
             callback((hostname, hostname), None)
         elif hostname in self._cache:
             DEBUG('hit cache: %s' % host)
             ip = self._cache[hostname]
             callback((hostname, ip), None)
-        elif not check_hostname(hostname):
-            callback(None, Exception('invalid hostname: %s' % hostname))
         else:
             arr = self._callbacks.get(hostname, None)
             if not arr:

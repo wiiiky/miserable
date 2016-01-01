@@ -16,7 +16,9 @@
 
 
 import unittest
+from miserable.dns.utils import *
 from miserable.dns.protocol import *
+from miserable.dns.resolver import *
 
 
 class DNSTestCase(unittest.TestCase):
@@ -26,7 +28,7 @@ class DNSTestCase(unittest.TestCase):
         self.assertTrue(bool(servers))
 
         hostname = b'www.baidu.com'
-        sock = DNSSocket(servers)
+        sock = Socket(servers)
         sock.send_dns_request(hostname)
         response = sock.recv_dns_response()
         self.assertTrue(response.hostname == hostname)

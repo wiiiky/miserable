@@ -154,7 +154,8 @@ class Response(object):
             = self.parse_response(data)
 
         self.answer = None
-        self.qtype = TYPE.ANY if not self.questions else self.questions[0]['type']
+        self.qtype = TYPE.ANY if not self.questions else self.questions[
+            0]['type']
         for answer in self.answers:
             if answer['type'] in (TYPE.A, TYPE.AAAA) and \
                     answer['class'] == CLASS.IN:
@@ -260,104 +261,3 @@ class Response(object):
             mid = mid
             return mid, hostname, questions, answers
         return None, None, [], []
-
-
-class DNSSocket(socket.socket):
-    """UDP socket for sending DNS request & receiving DNS response"""
-
-    def __init__(self, servers):
-        self._id = 0
-        self._wait4 = {}
-        self._wait6 = {}
-        self._timeout = 60
-        self._servers = servers if hasattr(servers, '__iter__') else [servers]
-        # TODO when dns server is IPv6
-        super(DNSSocket, self).__init__(socket.AF_INET, socket.SOCK_DGRAM,
-                                        socket.SOL_UDP)
-
-    def send_dns_request(self, hostname):
-        """send IPv6 and IPv4 DNS query at the same time"""
-        request4 = Request(hostname, TYPE.A, mid=self._id)
-        request6 = Request(hostname, TYPE.AAAA, mid=self._id)
-        for server in self._servers:
-            self.sendto(request4.bytes, (server, 53))
-            self.sendto(request6.bytes, (server, 53))
-        self._wait4[self._id] = time.time()
-        self._wait6[self._id] = time.time()
-        self._increase_id()
-
-    def recv_dns_response(self):
-        """receive and parse DNS response
-        """
-        self._check_timeout()
-        data, addr = self.recvfrom(1024)
-        if addr[0] not in self._servers:
-            return
-        response = Response(data)
-        DEBUG('receive DNS response %s ' % response)
-        if response.mid in self._wait4 and response.qtype == TYPE.A:
-            del self._wait4[response.mid]
-            if response.is_valid() and response.mid in self._wait6:
-                """if this is a valid IPv4 response then we ignore IPv6"""
-                del self._wait6[response.mid]
-            return response
-        elif response.mid in self._wait6 and response.qtype == TYPE.AAAA:
-            del self._wait6[response.mid]
-            if response.is_valid() and response.mid in self._wait4:
-                """if this is a valid IPv6 response then we ignore IPv4"""
-                del self._wait4[response.mid]
-            return response
-        return None
-
-    def _increase_id(self):
-        self._id += 1
-        if self._id > 65535:
-            """two bytes for message ID"""
-            self._id = 0
-
-    def _check_timeout(self):
-        now = time.time()
-
-        def kick(wait):
-            for mid, t in list(wait.items()):
-                if now - t > self._timeout:
-                    del wait[mid]
-        kick(self._wait4)
-        kick(self._wait6)
-
-
-def load_resolv_conf(path='/etc/resolv.conf'):
-    """parse the resolv.conf file and returns DNS servers"""
-    servers = []
-    try:
-        with open(path, 'r') as f:
-            for line in f.readlines():
-                line = line.strip()
-                if line and line.startswith('nameserver'):
-                    parts = line.split()
-                    if len(parts) >= 2 and check_ip(parts[1]) \
-                            == socket.AF_INET:
-                        servers.append(parts[1])
-    except IOError as e:
-        pass
-    if not servers:
-        servers = ['8.8.4.4', '8.8.8.8']
-    return servers
-
-
-def load_hosts_conf(path='/etc/hosts'):
-    """parse hosts file"""
-    hosts = {}
-    try:
-        with open(path, 'r') as f:
-            for line in f.readlines():
-                parts = line.strip().split()
-                if len(parts) >= 2:
-                    ip = parts[0]
-                    if check_ip(ip):
-                        for hostname in parts[1:]:
-                            if hostname:
-                                hosts[hostname] = ip
-    except IOError as e:
-        hosts['localhost'] = '127.0.0.1'
-    return hosts

@@ -19,6 +19,24 @@ from __future__ import absolute_import, division, print_function, \
 
 import re
 import socket
+import ipaddress
+
+
+def ip_address(addr):
+    """
+    convert a ip address string to
+    ipaddress.IPv4Address or ipaddress.IPv6Address
+    """
+    try:
+        return ipaddress.ip_address(addr)
+    except Exception as e:
+        return None
+
+
+def ipv6_address(ipaddr):
+    if ipaddr.version == 4:
+        ipaddr = ipaddress.IPv6Address('::ffff:' + ipaddr.compressed)
+    return ipaddr
 
 
 def tostr(data):
