@@ -43,7 +43,6 @@ class DNSResolver(object):
         self._hosts = load_hosts_conf()
         self._servers = load_resolv_conf()
         self._hostname_to_cb = {}
-        self._cb_to_hostname = {}
         self._cache = LRUCache(timeout=300, **self._hosts)
         self._sock = None
         # TODO monitor hosts change and reload hosts
@@ -66,8 +65,6 @@ class DNSResolver(object):
         DEBUG('DNS callback %s:%s' % (hostname, ip))
         callbacks = self._hostname_to_cb.get(hostname, [])
         for callback in callbacks:
-            if callback in self._cb_to_hostname:
-                del self._cb_to_hostname[callback]
             if ip or error:
                 callback((hostname, ip), error)
             else:
@@ -102,16 +99,6 @@ class DNSResolver(object):
     def handle_periodic(self):
         self._cache.sweep()
 
-    def remove_callback(self, callback):
-        hostname = self._cb_to_hostname.get(callback)
-        if hostname:
-            del self._cb_to_hostname[callback]
-            arr = self._hostname_to_cb.get(hostname, None)
-            if arr:
-                arr.remove(callback)
-                if not arr:
-                    del self._hostname_to_cb[hostname]
-
     def resolve(self, host, callback):
         hostname = tobytes(host)
         if not hostname:
@@ -128,7 +115,6 @@ class DNSResolver(object):
             arr = self._hostname_to_cb.get(hostname, None)
             if not arr:
                 self._hostname_to_cb[hostname] = [callback]
-                self._cb_to_hostname[callback] = hostname
                 self._send_request(hostname)
             else:
                 arr.append(callback)
