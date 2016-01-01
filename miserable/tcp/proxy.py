@@ -34,18 +34,11 @@ class TCPProxy(object):
 
     def __init__(self, dns_resolver):
         cfg = LocalConfig.get_config()
-        addr = cfg['local_address']
-        port = cfg['local_port']
+        laddr = cfg['local_address']
 
-        address = socket.getaddrinfo(addr, port, 0, socket.SOCK_STREAM,
-                                     socket.SOL_TCP)
-        if not address:
-            raise InvalidAddressException(addr, port)
-
-        af, socktype, proto, canonname, sa = address[0]
-        sock = socket.socket(af, socktype, proto)
+        sock = socket.socket(laddr.family, socket.SOCK_STREAM, socket.SOL_TCP)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(sa)
+        sock.bind((laddr.compressed, laddr.port))
         sock.setblocking(False)
 
         if cfg['fast_open']:
@@ -57,7 +50,7 @@ class TCPProxy(object):
         sock.listen(1024)
 
         self._dns_resolver = dns_resolver
-        self._local_address = (addr, port)
+        self._local_address = laddr
         self._socket = sock
         self._loop = None
         self._closed = False
@@ -115,7 +108,8 @@ class TCPProxy(object):
     def _close(self):
         if self._socket is None:
             return
-        INFO('close TCP %s:%s' % self._local_address)
+        INFO('close TCP %s:%s' %
+             (self._local_address, self._local_address.port))
         self._loop.remove(self._socket)
         self._socket.close()
         self._socket = None

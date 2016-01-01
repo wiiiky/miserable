@@ -135,11 +135,11 @@ class DNSResolver(object):
         self._refresh()
         loop.add_periodic(self.handle_periodic)
 
-    def _call_callback(self, hostname, ip, error=None):
-        DEBUG('DNS callback %s:%s' % (hostname, ip))
+    def _call_callback(self, hostname, ipaddr, error=None):
+        DEBUG('DNS callback %s:%s' % (hostname, ipaddr))
         for callback in self._callbacks.get(hostname, []):
-            if ip or error:
-                callback((hostname, ip), error)
+            if ipaddr or error:
+                callback((hostname, ipaddr), error)
             else:
                 callback((hostname, None),
                          Exception('unknown hostname %s' % hostname))
@@ -176,7 +176,7 @@ class DNSResolver(object):
         hostname = tobytes(host)
         if not hostname or not check_hostname(hostname):
             callback(None, Exception('invalid hostname: %s' % hostname))
-        elif check_ip(hostname):
+        elif ip_address(hostname):
             callback((hostname, hostname), None)
         elif hostname in self._cache:
             DEBUG('hit cache: %s' % host)

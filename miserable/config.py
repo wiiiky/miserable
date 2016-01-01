@@ -21,6 +21,7 @@ from __future__ import absolute_import, division, print_function, \
 import json
 import argparse
 import sys
+from miserable.utils import *
 
 CONFIG = None
 
@@ -139,7 +140,9 @@ class LocalConfig(Config):
         for i in cfgarg:
             get_arg(i[0], i[1], i[2])
 
+        cfg['local_address'] = ip_address(cfg['local_address'])
+        if not cfg['local_address']:
+            print('invalid local address!')
+            sys.exit(1)
+        cfg['local_address'].port = cfg['local_port']
         return cfg
-
-if __name__ == '__main__':
-    print(LocalConfig.get_config())

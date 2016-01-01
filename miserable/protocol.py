@@ -67,10 +67,9 @@ def parse_request(data):
     return vsn, cmd, atype, dest_addr, dest_port
 
 
-def build_reply(vsn, rep, rsv, bind_addr, bind_port):
+def build_reply(vsn, rep, rsv, addr, port):
     """build a SOCKS5 reply"""
-    family, bind_addr = addr2bytes(bind_addr)
-    atype = 1 if family == socket.AF_INET else 4
-    data = struct.pack('!BBBB', vsn, rep, rsv, atype) + bind_addr\
-        + struct.pack('!H', bind_port)
+    atype = 1 if addr.family == socket.AF_INET else 4
+    data = struct.pack('!BBBB', vsn, rep, rsv, atype) + addr.packed\
+        + struct.pack('!H', port)
     return data

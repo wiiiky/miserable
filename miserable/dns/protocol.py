@@ -159,7 +159,7 @@ class Response(object):
         for answer in self.answers:
             if answer['type'] in (TYPE.A, TYPE.AAAA) and \
                     answer['class'] == CLASS.IN:
-                self.answer = answer['addr']
+                self.answer = ip_address(answer['addr'])
                 return
 
     def __str__(self):

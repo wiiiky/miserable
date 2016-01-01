@@ -57,13 +57,12 @@ class LocalTransfer(object):
         self._encryptor = Encryptor(cfg['password'], cfg['method'])
         self._loop = loop
         self._client = Client(sock, addr, loop, self._encryptor)
-        self._remote_address = (cfg['remote_address'], cfg['remote_port'])
         self._remote = None
         self._server_address = None
         self._dns_resolver = dns_resolver
         self._last_active = time.time()
+        self._remote_address = (cfg['remote_address'], cfg['remote_port'])
         self._local_address = cfg['local_address']
-        self._local_port = cfg['local_port']
 
     @property
     def closed(self):
@@ -145,7 +144,7 @@ class LocalTransfer(object):
             self._server_address = (server_addr, server_port)
             # forward address to remote
             self._client.write(build_reply(5, 0, 0, self._local_address,
-                                           self._local_port))
+                                           self._local_address.port))
             self._client.state = ClientState.DNS
             self._remote = Remote(None, self._remote_address, self._loop,
                                   self._encryptor)
@@ -178,15 +177,12 @@ class LocalTransfer(object):
         if error:
             self.stop(warning=error)
             return
-        ip = result[1]
+        ipaddr = result[1]
         port = self._remote_address[1]
 
-        addrs = socket.getaddrinfo(ip, port, 0, socket.SOCK_STREAM,
-                                   socket.SOL_TCP)
-        af, socktype, proto, canonname, sa = addrs[0]
-        sock = socket.socket(af, socktype, proto)
-        self._remote.socket = sock
-        self._remote.connect((ip, port))
+        self._remote.socket = socket.socket(ipaddr.family, socket.SOCK_STREAM,
+                                            socket.SOL_TCP)
+        self._remote.connect((ipaddr.compressed, port))
         self._remote.start(POLL_ERR | POLL_OUT | POLL_IN, self)
 
     def stop(self, info=None, warning=None):

@@ -28,14 +28,19 @@ def ip_address(addr):
     ipaddress.IPv4Address or ipaddress.IPv6Address
     """
     try:
-        return ipaddress.ip_address(addr)
+        ipaddr = ipaddress.ip_address(addr)
+        if ipaddr.version == 4:
+            ipaddr.family = socket.AF_INET
+        else:
+            ipaddr.family = socket.AF_INET6
+        return ipaddr
     except Exception as e:
         return None
 
 
 def ipv6_address(ipaddr):
     if ipaddr.version == 4:
-        ipaddr = ipaddress.IPv6Address('::ffff:' + ipaddr.compressed)
+        ipaddr = ip_address('::ffff:' + ipaddr.compressed)
     return ipaddr
 
 
