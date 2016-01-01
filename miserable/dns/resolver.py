@@ -42,7 +42,7 @@ class DNSResolver(object):
         self._loop = None
         self._hosts = load_hosts_conf()
         self._servers = load_resolv_conf()
-        self._hostname_to_cb = {}
+        self._callbacks = {}
         self._cache = LRUCache(timeout=300, **self._hosts)
         self._sock = None
         # TODO monitor hosts change and reload hosts
@@ -63,15 +63,14 @@ class DNSResolver(object):
 
     def _call_callback(self, hostname, ip, error=None):
         DEBUG('DNS callback %s:%s' % (hostname, ip))
-        callbacks = self._hostname_to_cb.get(hostname, [])
-        for callback in callbacks:
+        for callback in self._callbacks.get(hostname, []):
             if ip or error:
                 callback((hostname, ip), error)
             else:
                 callback((hostname, None),
                          Exception('unknown hostname %s' % hostname))
-        if hostname in self._hostname_to_cb:
-            del self._hostname_to_cb[hostname]
+        if hostname in self._callbacks:
+            del self._callbacks[hostname]
 
     def _send_request(self, hostname):
         DEBUG('query DNS %s' % hostname)
@@ -88,7 +87,7 @@ class DNSResolver(object):
         if sock != self._sock:
             return
         if event & eventloop.POLL_ERR:
-            ERROR('dns socket err')
+            ERROR('dns socket error')
             self._loop.remove(self._sock)
             self._sock.close()
             self._refresh()
@@ -112,9 +111,9 @@ class DNSResolver(object):
         elif not check_hostname(hostname):
             callback(None, Exception('invalid hostname: %s' % hostname))
         else:
-            arr = self._hostname_to_cb.get(hostname, None)
+            arr = self._callbacks.get(hostname, None)
             if not arr:
-                self._hostname_to_cb[hostname] = [callback]
+                self._callbacks[hostname] = [callback]
                 self._send_request(hostname)
             else:
                 arr.append(callback)
