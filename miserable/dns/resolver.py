@@ -21,7 +21,6 @@ from __future__ import absolute_import, division, print_function, \
 import os
 import socket
 import struct
-import re
 
 from miserable import eventloop
 from miserable.log import *
@@ -31,16 +30,6 @@ from miserable.utils import *
 
 
 CACHE_SWEEP_INTERVAL = 30
-
-VALID_HOSTNAME = re.compile(br'(?!-)[A-Z\d-]{1,63}(?<!-)$', re.IGNORECASE)
-
-
-def is_valid_hostname(hostname):
-    if len(hostname) > 255:
-        return False
-    if hostname[-1] == b'.':
-        hostname = hostname[:-1]
-    return all(VALID_HOSTNAME.match(x) for x in hostname.split(b'.'))
 
 
 STATUS_IPV4 = 0
@@ -53,7 +42,6 @@ class DNSResolver(object):
         self._loop = None
         self._hosts = load_hosts_conf()
         self._servers = load_resolv_conf()
-        self._hostname_status = {}
         self._hostname_to_cb = {}
         self._cb_to_hostname = {}
         self._cache = LRUCache(timeout=300, **self._hosts)
@@ -86,35 +74,17 @@ class DNSResolver(object):
                          Exception('unknown hostname %s' % hostname))
         if hostname in self._hostname_to_cb:
             del self._hostname_to_cb[hostname]
-        if hostname in self._hostname_status:
-            del self._hostname_status[hostname]
 
-    def _send_request(self, hostname, atype=TYPE.A):
+    def _send_request(self, hostname):
         DEBUG('query DNS %s' % hostname)
-        self._sock.send_dns_request(hostname, atype)
+        self._sock.send_dns_request(hostname)
 
     def _handle_response(self, response):
         if not response:
             return
-        hostname = response.hostname
-        ip = None
-        for answer in response.answers:
-            if answer['type'] in (TYPE.A, TYPE.AAAA) and \
-                    answer['class'] == CLASS.IN:
-                ip = answer['addr']
-                break
-        if not ip and self._hostname_status.get(hostname, STATUS_IPV6) \
-                == STATUS_IPV4:
-            self._hostname_status[hostname] = STATUS_IPV6
-            self.send_request(hostname, TYPE.AAAA)
-        elif ip:
-            self._cache[hostname] = ip
-            self._call_callback(hostname, ip)
-        elif self._hostname_status.get(hostname, None) == STATUS_IPV6:
-            for question in response.questions:
-                if question['type'] == TYPE.AAA:
-                    self._call_callback(hostname, None)
-                    break
+        if response.is_valid():
+            self._cache[response.hostname] = response.answer
+        self._call_callback(response.hostname, response.answer)
 
     def handle_event(self, sock, fd, event):
         if sock != self._sock:
@@ -140,8 +110,6 @@ class DNSResolver(object):
                 arr.remove(callback)
                 if not arr:
                     del self._hostname_to_cb[hostname]
-                    if hostname in self._hostname_status:
-                        del self._hostname_status[hostname]
 
     def resolve(self, host, callback):
         hostname = tobytes(host)
@@ -153,13 +121,11 @@ class DNSResolver(object):
             DEBUG('hit cache: %s' % host)
             ip = self._cache[hostname]
             callback((hostname, ip), None)
+        elif not check_hostname(hostname):
+            callback(None, Exception('invalid hostname: %s' % hostname))
         else:
-            if not is_valid_hostname(hostname):
-                callback(None, Exception('invalid hostname: %s' % hostname))
-                return
             arr = self._hostname_to_cb.get(hostname, None)
             if not arr:
-                self._hostname_status[hostname] = STATUS_IPV4
                 self._hostname_to_cb[hostname] = [callback]
                 self._cb_to_hostname[callback] = hostname
                 self._send_request(hostname)

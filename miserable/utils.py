@@ -17,6 +17,7 @@
 from __future__ import absolute_import, division, print_function, \
     with_statement
 
+import re
 import socket
 
 
@@ -48,6 +49,21 @@ def check_ip(address):
         except (TypeError, ValueError, OSError, IOError):
             pass
     return False
+
+
+VALID_HOSTNAME = re.compile(br'(?!-)[A-Z\d-]{1,63}(?<!-)$', re.IGNORECASE)
+
+
+def check_hostname(hostname):
+    """
+    check to see if the hostname is legal
+    """
+    if len(hostname) > 255:
+        return False
+    hostname = tobytes(hostname)
+    if hostname[-1] == b'.':
+        hostname = hostname[:-1]
+    return all(VALID_HOSTNAME.match(x) for x in hostname.split(b'.'))
 
 
 def addr2bytes(ip):

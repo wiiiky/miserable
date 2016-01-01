@@ -16,7 +16,7 @@
 
 
 import unittest
-from shadowsocks.dns.protocol import *
+from miserable.dns.protocol import *
 
 
 class DNSTestCase(unittest.TestCase):

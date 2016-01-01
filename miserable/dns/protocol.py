@@ -74,6 +74,7 @@ from __future__ import absolute_import, division, print_function, \
     with_statement
 
 from miserable.utils import *
+from miserable.log import *
 
 import struct
 import socket
@@ -114,14 +115,13 @@ class CLASS:
 class Request(object):
     """DNS request"""
 
-    def __init__(self, hostname, qtype, mid=None):
+    def __init__(self, hostname, atype=TYPE.A, mid=None):
         """
         if message ID not specified, use a random one
         """
         self.hostname = hostname
-        self.qtype = qtype
         self.mid = mid if type(mid) is int else random.randint(1, 65535)
-        self.bytes = self.build_package(self.mid, self.hostname, self.qtype)
+        self.bytes = self.build_package(self.mid, self.hostname, atype)
 
     @classmethod
     def build_hostname(klass, hostname):
@@ -138,12 +138,12 @@ class Request(object):
         return b''.join(results)
 
     @classmethod
-    def build_package(klass, mid, hostname, qtype):
+    def build_package(klass, mid, hostname, atype):
         """build the DNS request package"""
         header = struct.pack('!BBHHHH', 1, 0, 1, 0, 0, 0)
         addr = klass.build_hostname(hostname)
-        qtype_qclass = struct.pack('!HH', qtype, CLASS.IN)
-        return struct.pack('!H', mid) + header + addr + qtype_qclass
+        tc = struct.pack('!HH', atype, CLASS.IN)
+        return struct.pack('!H', mid) + header + addr + tc
 
 
 class Response(object):
@@ -153,9 +153,18 @@ class Response(object):
         self.mid, self.hostname, self.questions, self.answers\
             = self.parse_response(data)
 
+        self.answer = None
+        for answer in self.answers:
+            if answer['type'] in (TYPE.A, TYPE.AAAA) and \
+                    answer['class'] == CLASS.IN:
+                self.answer = answer['addr']
+                return
+
+    def __str__(self):
+        return u'[%s] %s - %s' % (self.mid, self.hostname, self.answer)
+
     def is_valid(self):
-        return bool(self.hostname) and bool(self.answers)\
-            and bool(self.questions)
+        return bool(self.hostname) and bool(self.answer)
 
     @classmethod
     def parse_header(klass, data):
@@ -221,9 +230,6 @@ class Response(object):
     @classmethod
     def parse_response(klass, data):
         """parse the DNS response"""
-        if len(data) < 12:
-            return
-
         mid, qr, tc, ra, rcode, qdcount, ancount, nscount,\
             arcount = klass.parse_header(data[:12])
 
@@ -252,7 +258,7 @@ class Response(object):
                        for a in ans if a]
             mid = mid
             return mid, hostname, questions, answers
-        return None, None, None, None
+        return None, None, [], []
 
 
 class DNSSocket(socket.socket):
@@ -260,18 +266,22 @@ class DNSSocket(socket.socket):
 
     def __init__(self, servers):
         self._id = 0
-        self._wait = {}
+        self._wait4 = {}
+        self._wait6 = {}
         self._timeout = 60
         self._servers = servers if hasattr(servers, '__iter__') else [servers]
         # TODO when dns server is IPv6
         super(DNSSocket, self).__init__(socket.AF_INET, socket.SOCK_DGRAM,
                                         socket.SOL_UDP)
 
-    def send_dns_request(self, hostname, qtype=TYPE.A):
-        request = Request(hostname, qtype, mid=self._id)
+    def send_dns_request(self, hostname):
+        request4 = Request(hostname, TYPE.A, mid=self._id)
+        request6 = Request(hostname, TYPE.AAAA, mid=self._id)
         for server in self._servers:
-            self.sendto(request.bytes, (server, 53))
-        self._wait[self._id] = time.time()
+            self.sendto(request4.bytes, (server, 53))
+            self.sendto(request6.bytes, (server, 53))
+        self._wait4[self._id] = time.time()
+        self._wait6[self._id] = time.time()
         self._increase_id()
 
     def recv_dns_response(self):
@@ -280,9 +290,13 @@ class DNSSocket(socket.socket):
         if addr[0] not in self._servers:
             return
         response = Response(data)
-        if not response.is_valid() or response.mid not in self._wait:
+        DEBUG('receive DNS response %s ' % response)
+        if response.mid in self._wait4:
+            del self._wait4[response.mid]
+        elif response.mid in self._wait6:
+            del self._wait6[response.mid]
+        else:
             return None
-        del self._wait[response.mid]
         return response
 
     def _increase_id(self):
@@ -293,9 +307,13 @@ class DNSSocket(socket.socket):
 
     def _check_timeout(self):
         now = time.time()
-        for mid, t in list(self._wait.items()):
-            if now - t > self._timeout:
-                del self._wait[mid]
+
+        def kick(wait):
+            for mid, t in list(wait.items()):
+                if now - t > self._timeout:
+                    del wait[mid]
+        kick(self._wait4)
+        kick(self._wait6)
 
 
 def load_resolv_conf(path='/etc/resolv.conf'):
