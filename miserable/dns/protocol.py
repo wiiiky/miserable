@@ -154,6 +154,7 @@ class Response(object):
             = self.parse_response(data)
 
         self.answer = None
+        self.qtype = TYPE.ANY if not self.questions else self.questions[0]['type']
         for answer in self.answers:
             if answer['type'] in (TYPE.A, TYPE.AAAA) and \
                     answer['class'] == CLASS.IN:
@@ -161,7 +162,7 @@ class Response(object):
                 return
 
     def __str__(self):
-        return u'[%s] %s - %s' % (self.mid, self.hostname, self.answer)
+        return u'[%s] %s - %s' % (self.qtype, self.hostname, self.answer)
 
     def is_valid(self):
         return bool(self.hostname) and bool(self.answer)
@@ -275,6 +276,7 @@ class DNSSocket(socket.socket):
                                         socket.SOL_UDP)
 
     def send_dns_request(self, hostname):
+        """send IPv6 and IPv4 DNS query at the same time"""
         request4 = Request(hostname, TYPE.A, mid=self._id)
         request6 = Request(hostname, TYPE.AAAA, mid=self._id)
         for server in self._servers:
@@ -285,19 +287,27 @@ class DNSSocket(socket.socket):
         self._increase_id()
 
     def recv_dns_response(self):
+        """receive and parse DNS response
+        """
         self._check_timeout()
         data, addr = self.recvfrom(1024)
         if addr[0] not in self._servers:
             return
         response = Response(data)
         DEBUG('receive DNS response %s ' % response)
-        if response.mid in self._wait4:
+        if response.mid in self._wait4 and response.qtype == TYPE.A:
             del self._wait4[response.mid]
-        elif response.mid in self._wait6:
+            if response.is_valid() and response.mid in self._wait6:
+                """if this is a valid IPv4 response then we ignore IPv6"""
+                del self._wait6[response.mid]
+            return response
+        elif response.mid in self._wait6 and response.qtype == TYPE.AAAA:
             del self._wait6[response.mid]
-        else:
-            return None
-        return response
+            if response.is_valid() and response.mid in self._wait4:
+                """if this is a valid IPv6 response then we ignore IPv4"""
+                del self._wait4[response.mid]
+            return response
+        return None
 
     def _increase_id(self):
         self._id += 1

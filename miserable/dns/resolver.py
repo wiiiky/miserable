@@ -63,6 +63,7 @@ class DNSResolver(object):
         loop.add_periodic(self.handle_periodic)
 
     def _call_callback(self, hostname, ip, error=None):
+        DEBUG('DNS callback %s:%s' % (hostname, ip))
         callbacks = self._hostname_to_cb.get(hostname, [])
         for callback in callbacks:
             if callback in self._cb_to_hostname:
