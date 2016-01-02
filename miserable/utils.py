@@ -44,6 +44,27 @@ def ipv6_address(ipaddr):
     return ipaddr
 
 
+class Hostname(object):
+
+    def __init__(self, name):
+        self._ipaddr = ip_address(name)
+        self._hostname = None
+        if not self._ipaddr:
+            self._hostname = name
+
+    @property
+    def ipaddr(self):
+        return self._ipaddr
+
+    @ipaddr.setter
+    def ipaddr(self, ipaddr):
+        self._ipaddr = ipaddr
+
+    @property
+    def hostname(self):
+        return self._hostname
+
+
 def tostr(data):
     """convert bytes to str"""
     if type(data) is bytes:
