@@ -48,16 +48,8 @@ class Address(object):
 
     def __init__(self, name, port):
         self._ipaddr = ip_address(name)
-        self._hostname = None
+        self._hostname = name
         self._port = port
-        if not self._ipaddr:
-            self._hostname = name
-
-    @property
-    def display(self):
-        if self._ipaddr:
-            return (str(self._ipaddr), self._port)
-        return (self._hostname, self._port)
 
     @property
     def family(self):
@@ -78,10 +70,6 @@ class Address(object):
     @property
     def ipaddr(self):
         return self._ipaddr
-
-    @ipaddr.setter
-    def ipaddr(self, ipaddr):
-        self._ipaddr = ipaddr
 
     @property
     def hostname(self):

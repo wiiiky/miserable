@@ -144,6 +144,6 @@ class LocalConfig(Config):
         if not cfg['local_address'].ipaddr:
             print('invalid local address!')
             sys.exit(1)
-        cfg['remote_address'] = cfg['remote_address']
-        cfg['remote_port'] = cfg['remote_port']
+        cfg['remote_address'] = Address(cfg['remote_address'],
+                                        cfg['remote_port'])
         return cfg

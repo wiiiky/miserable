@@ -21,6 +21,7 @@ from __future__ import absolute_import, division, print_function, \
 import time
 import socket
 from miserable.log import *
+from miserable.utils import *
 from miserable.exception import *
 from miserable.eventloop import *
 
@@ -75,7 +76,8 @@ class TCPProxy(object):
     @return_val_if_wouldblock(None)
     def _accept(self):
         client, addr = self._socket.accept()
-        DEBUG('accept %s:%s' % addr)
+        addr = Address(addr[0], addr[1])
+        DEBUG('accept %s:%s' % (addr.ipaddr, addr.port))
         transfer = LocalTransfer(self._loop, client, addr, self._dns_resolver)
         transfer.start()
         self._transfers.append(transfer)
@@ -108,7 +110,8 @@ class TCPProxy(object):
     def _close(self):
         if self._socket is None:
             return
-        INFO('close TCP %s:%s' % self._local_address.display)
+        INFO('close TCP %s:%s' %
+             (self._local_address.ipaddr, self._local_address.port))
         self._loop.remove(self._socket)
         self._socket.close()
         self._socket = None

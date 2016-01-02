@@ -45,7 +45,8 @@ def main():
     daemon.daemon_exec(cfg)
 
     try:
-        INFO('starting local at %s:%d' % cfg['local_address'].display)
+        INFO('starting local at %s:%d' %
+             (cfg['local_address'].ipaddr, cfg['local_address'].port))
 
         dns_resolver = DNSResolver()
         tcp_proxy = TCPProxy(dns_resolver)

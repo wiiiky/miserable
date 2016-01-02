@@ -61,7 +61,7 @@ class LocalTransfer(object):
         self._server_address = None
         self._dns_resolver = dns_resolver
         self._last_active = time.time()
-        self._remote_address = (cfg['remote_address'], cfg['remote_port'])
+        self._remote_address = cfg['remote_address']
         self._local_address = cfg['local_address']
 
     @property
@@ -74,9 +74,12 @@ class LocalTransfer(object):
 
     @property
     def display_name(self):
-        client = '%s:%s' % self._client.address
-        server = '%s:%s' % self._server_address if self._server_address \
-            else 'None'
+        client = '%s:%s' % (self._client.ipaddr, self._client.port)
+        if self._server_address:
+            server = '%s:%s' % (self._server_address.ipaddr,
+                                self._server_address.port)
+        else:
+            server = 'None'
         return '%s <==> %s' % (client, server)
 
     def start(self):
@@ -86,12 +89,14 @@ class LocalTransfer(object):
         self._last_active = time.time()
         if sock == self._client.socket:
             if event & POLL_ERR:
-                self.stop(info='client %s:%s error' % self._client.address)
+                self.stop(info='client %s:%s error' %
+                          (self._client.ipaddr, self._client.port))
                 return
             self._handle_client(event)
         elif sock == self._remote.socket:
             if event & POLL_ERR:
-                self.stop(info='remote %s:%s error' % self._server_address)
+                self.stop(info='remote %s:%s error' %
+                          (self._client.ipaddr, self._client.port))
                 return
             self._handle_remote(event)
 
@@ -102,7 +107,8 @@ class LocalTransfer(object):
         if event & POLL_IN:
             data = self._client.read()
             if data == b'':
-                self.stop(info='client %s:%s closed' % self._client.address)
+                self.stop(info='client %s:%s closed' %
+                          (self._client.ipaddr, self._client.port))
                 return
 
         if self._client.state == ClientState.UDP_ASSOC:
@@ -110,7 +116,8 @@ class LocalTransfer(object):
         elif self._client.state in (ClientState.INIT, ClientState.ADDR)\
                 and not data:
             """in state INIT or ADDR, supposed to receive data from client"""
-            self.stop(info='client %s:%s closed' % self._client.address)
+            self.stop(info='client %s:%s closed' %
+                      (self._client.ipaddr, self._client.port))
             return
 
         if self._client.state == ClientState.INIT:
@@ -129,8 +136,8 @@ class LocalTransfer(object):
             if cmd == SOCKS5Command.UDP_ASSOCIATE:
                 DEBUG('UDP associate')
                 self._client.write(build_reply(5, 0, 0,
-                                               self._client.address[0],
-                                               self._client.address[1]))
+                                               self._client.ipaddr,
+                                               self._client.port))
                 self._client.state = ClientState.UDP_ASSOC
                 # just wait for the client to disconnect
                 return
@@ -139,9 +146,9 @@ class LocalTransfer(object):
 
             server_addr = tostr(server_addr)
             INFO('connecting %s:%d from %s:%d' %
-                 (server_addr, server_port, self._client.address[0],
-                  self._client.address[1]))
-            self._server_address = (server_addr, server_port)
+                 (server_addr, server_port, self._client.ipaddr,
+                  self._client.port))
+            self._server_address = Address(server_addr, server_port)
             # forward address to remote
             self._client.write(build_reply(5, 0, 0, self._local_address.ipaddr,
                                            self._local_address.port))
@@ -149,8 +156,12 @@ class LocalTransfer(object):
             self._remote = Remote(None, self._remote_address, self._loop,
                                   self._encryptor)
             self._remote.write(data[3:])
-            self._dns_resolver.resolve(self._remote_address[0],
-                                       self._dns_resolved)
+            if self._remote_address.ipaddr:
+                self._connect_to_remote(self._remote_address.ipaddr,
+                                        self._remote_address.port)
+            else:
+                self._dns_resolver.resolve(self._remote_address.hostname,
+                                           self._dns_resolved)
         elif data and self._remote:
             self._remote.write(data)
         if event & POLL_OUT:
@@ -163,7 +174,9 @@ class LocalTransfer(object):
         if event & POLL_IN:
             data = self._remote.read()
             if data == b'':
-                self.stop(info=('remote %s:%s closed' % self._server_address))
+                self.stop(info=('remote %s:%s closed' %
+                                (self._server_address.hostname,
+                                 self._server_address.port)))
                 return
             self._client.write(data)
 
@@ -177,9 +190,9 @@ class LocalTransfer(object):
         if error:
             self.stop(warning=error)
             return
-        ipaddr = result[1]
-        port = self._remote_address[1]
+        self._connect_to_remote(result[1], self._remote_address.port)
 
+    def _connect_to_remote(self, ipaddr, port):
         self._remote.socket = socket.socket(ipaddr.family, socket.SOCK_STREAM,
                                             socket.SOL_TCP)
         self._remote.connect((ipaddr.compressed, port))

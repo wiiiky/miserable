@@ -92,6 +92,14 @@ class Peer(object):
     def address(self):
         return self._address
 
+    @property
+    def ipaddr(self):
+        return self._address.ipaddr
+
+    @property
+    def port(self):
+        return self._address.port
+
     @return_val_if_wouldblock(None)
     def read(self):
         """
