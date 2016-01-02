@@ -143,7 +143,7 @@ class LocalTransfer(object):
                   self._client.address[1]))
             self._server_address = (server_addr, server_port)
             # forward address to remote
-            self._client.write(build_reply(5, 0, 0, self._local_address,
+            self._client.write(build_reply(5, 0, 0, self._local_address.ipaddr,
                                            self._local_address.port))
             self._client.state = ClientState.DNS
             self._remote = Remote(None, self._remote_address, self._loop,

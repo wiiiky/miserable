@@ -140,9 +140,10 @@ class LocalConfig(Config):
         for i in cfgarg:
             get_arg(i[0], i[1], i[2])
 
-        cfg['local_address'] = ip_address(cfg['local_address'])
-        if not cfg['local_address']:
+        cfg['local_address'] = Address(cfg['local_address'], cfg['local_port'])
+        if not cfg['local_address'].ipaddr:
             print('invalid local address!')
             sys.exit(1)
-        cfg['local_address'].port = cfg['local_port']
+        cfg['remote_address'] = cfg['remote_address']
+        cfg['remote_port'] = cfg['remote_port']
         return cfg

@@ -108,8 +108,7 @@ class TCPProxy(object):
     def _close(self):
         if self._socket is None:
             return
-        INFO('close TCP %s:%s' %
-             (self._local_address, self._local_address.port))
+        INFO('close TCP %s:%s' % self._local_address.display)
         self._loop.remove(self._socket)
         self._socket.close()
         self._socket = None

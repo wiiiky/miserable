@@ -44,13 +44,36 @@ def ipv6_address(ipaddr):
     return ipaddr
 
 
-class Hostname(object):
+class Address(object):
 
-    def __init__(self, name):
+    def __init__(self, name, port):
         self._ipaddr = ip_address(name)
         self._hostname = None
+        self._port = port
         if not self._ipaddr:
             self._hostname = name
+
+    @property
+    def display(self):
+        if self._ipaddr:
+            return (str(self._ipaddr), self._port)
+        return (self._hostname, self._port)
+
+    @property
+    def family(self):
+        return self._ipaddr.family
+
+    @property
+    def compressed(self):
+        return self._ipaddr.compressed
+
+    @property
+    def port(self):
+        return self._port
+
+    @port.setter
+    def port(self, port):
+        self._port = port
 
     @property
     def ipaddr(self):
