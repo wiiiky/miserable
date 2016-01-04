@@ -38,7 +38,7 @@ def load_resolv_conf(path='/etc/resolv.conf'):
     except IOError as e:
         pass
     if not servers:
-        servers = ['8.8.4.4', '8.8.8.8']
+        servers = [ip_address('8.8.4.4'), ip_address('8.8.8.8')]
     return servers
 
 
