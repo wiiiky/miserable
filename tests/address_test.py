@@ -22,11 +22,12 @@ from miserable.dns.utils import *
 class HostnameTestCase(unittest.TestCase):
 
     def test_hostname(self):
-        hostname = Hostname('www.baidu.com')
-        self.assertTrue(hostname.ipaddr is None)
-        self.assertEqual(hostname.hostname, 'www.baidu.com')
-        hostname.ipaddr = ip_address('127.0.0.1')
-        self.assertTrue(hostname.ipaddr is not None)
+        addr = Address('www.baidu.com', 80)
+        self.assertTrue(addr.ipaddr is None)
+        self.assertEqual(addr.port, 80)
+        self.assertEqual(addr.hostname, 'www.baidu.com')
+        addr.ipaddr = ip_address('127.0.0.1')
+        self.assertTrue(addr.ipaddr is not None)
 
 if __name__ == '__main__':
     unittest.main()
