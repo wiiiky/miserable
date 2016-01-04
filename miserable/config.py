@@ -18,15 +18,14 @@ from __future__ import absolute_import, division, print_function, \
     with_statement
 
 
+import copy
 import json
 import argparse
 import sys
 from miserable.utils import *
 
-CONFIG = None
 
-
-class Config(object):
+class ConfigManager(object):
 
     def __init__(self):
         self._parser = None
@@ -59,7 +58,14 @@ class Config(object):
         return klass.instance().parser
 
 
-class LocalConfig(Config):
+class Config(dict):
+    """always return a copy of config value to make config won't be changed"""
+
+    def __getitem__(self, k):
+        return copy.deepcopy(super(Config, self).__getitem__(k))
+
+
+class LocalConfigManager(ConfigManager):
 
     _instance = None
 
@@ -107,7 +113,7 @@ class LocalConfig(Config):
 
     def _get_config(self):
         args = self.parser.parse_args()
-        cfg = {}
+        cfg = Config()
         if args.c:
             cfg = json.load(args.c)
 

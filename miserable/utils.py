@@ -71,6 +71,10 @@ class Address(object):
     def ipaddr(self):
         return self._ipaddr
 
+    @ipaddr.setter
+    def ipaddr(self, ipaddr):
+        self._ipaddr = ipaddr
+
     @property
     def hostname(self):
         return self._hostname

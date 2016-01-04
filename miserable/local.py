@@ -27,19 +27,19 @@ try:
     from miserable import daemon, eventloop
     from miserable.dns.resolver import DNSResolver
     from miserable.tcp.proxy import TCPProxy
-    from miserable.config import LocalConfig
+    from miserable.config import LocalConfigManager
     from miserable.log import *
 except ImportError as e:
     sys.path.append(os.path.curdir)
     from miserable import daemon, eventloop
     from miserable.dns.resolver import DNSResolver
     from miserable.tcp.proxy import TCPProxy
-    from miserable.config import LocalConfig
+    from miserable.config import LocalConfigManager
     from miserable.log import *
 
 
 def main():
-    cfg = LocalConfig.get_config()
+    cfg = LocalConfigManager.get_config()
 
     logging_init(cfg)
     daemon.daemon_exec(cfg)

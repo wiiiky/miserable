@@ -27,14 +27,14 @@ from miserable.eventloop import *
 
 from miserable.tcp.peer import return_val_if_wouldblock
 from miserable.tcp.transfer import LocalTransfer
-from miserable.config import LocalConfig
+from miserable.config import LocalConfigManager
 
 
 class TCPProxy(object):
     """Shadowsocks TCP proxy"""
 
     def __init__(self, dns_resolver):
-        cfg = LocalConfig.get_config()
+        cfg = LocalConfigManager.get_config()
         laddr = cfg['local_address']
 
         sock = socket.socket(laddr.family, socket.SOCK_STREAM, socket.SOL_TCP)

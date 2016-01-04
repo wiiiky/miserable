@@ -30,7 +30,7 @@ from miserable.encrypt import Encryptor
 
 from miserable.tcp.client import ClientState, Client
 from miserable.tcp.remote import Remote
-from miserable.config import LocalConfig
+from miserable.config import LocalConfigManager
 
 
 def stop_transfer_if_fail(f):
@@ -52,7 +52,7 @@ class LocalTransfer(object):
     """
 
     def __init__(self, loop, sock, addr, dns_resolver):
-        cfg = LocalConfig.get_config()
+        cfg = LocalConfigManager.get_config()
 
         self._encryptor = Encryptor(cfg['password'], cfg['method'])
         self._loop = loop
@@ -157,8 +157,7 @@ class LocalTransfer(object):
                                   self._encryptor)
             self._remote.write(data[3:])
             if self._remote_address.ipaddr:
-                self._connect_to_remote(self._remote_address.ipaddr,
-                                        self._remote_address.port)
+                self._connect_to_remote()
             else:
                 self._dns_resolver.resolve(self._remote_address.hostname,
                                            self._dns_resolved)
@@ -190,9 +189,12 @@ class LocalTransfer(object):
         if error:
             self.stop(warning=error)
             return
-        self._connect_to_remote(result[1], self._remote_address.port)
+        self._remote_address.ipaddr = result[1]
+        self._connect_to_remote()
 
-    def _connect_to_remote(self, ipaddr, port):
+    def _connect_to_remote(self):
+        ipaddr = self._remote_address.ipaddr
+        port = self._remote_address.port
         self._remote.socket = socket.socket(ipaddr.family, socket.SOCK_STREAM,
                                             socket.SOL_TCP)
         self._remote.connect((ipaddr.compressed, port))
