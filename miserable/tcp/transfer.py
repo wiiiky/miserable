@@ -89,13 +89,13 @@ class LocalTransfer(object):
         self._last_active = time.time()
         if sock == self._client.socket:
             if event & POLL_ERR:
-                self.stop(info='client %s:%s error' %
+                self.stop(warning='client %s:%s error' %
                           (self._client.ipaddr, self._client.port))
                 return
             self._handle_client(event)
         elif sock == self._remote.socket:
             if event & POLL_ERR:
-                self.stop(info='remote %s:%s error' %
+                self.stop(warning='remote %s:%s error' %
                           (self._client.ipaddr, self._client.port))
                 return
             self._handle_remote(event)
