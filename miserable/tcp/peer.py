@@ -71,8 +71,8 @@ class Peer(object):
         return self._encryptor.decrypt(data)
 
     def start(self, events, manager):
+        self._loop.add(self._socket, events, manager)
         self._events = events
-        self._loop.add(self._socket, self._events, manager)
 
     @property
     def connected(self):
@@ -144,6 +144,6 @@ class Peer(object):
         return n
 
     def close(self):
-        if self._socket:
+        if self._socket and self._events:
             self._loop.remove(self._socket)
             self._socket.close()
