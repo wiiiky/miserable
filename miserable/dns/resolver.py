@@ -64,27 +64,41 @@ class Socket(socket.socket):
         self._increase_id()
 
     def recv_dns_response(self):
-        """receive and parse DNS response
+        """
+        receive and parse DNS response
+        if a valid DNS response received, returns it
+        if an invalid DNS response received but
+            there's another type of response to wait, returns None
+        otherwise returns a Response object whose is_valid == False
         """
         self._check_timeout()
         data, addr = self.recvfrom(1024)
         if not self. _check_server(addr):
-            DEBUG('receive DNS response from unknown server %s' % addr)
+            WARNING('receive DNS response from unknown server %s' % addr)
             return
         response = Response(data)
         DEBUG('receive DNS response %s ' % response)
         if response.mid in self._wait4 and response.qtype == TYPE.A:
             del self._wait4[response.mid]
-            if response.is_valid() and response.mid in self._wait6:
+            if response.is_valid():
                 """if this is a valid IPv4 response then we ignore IPv6"""
-                del self._wait6[response.mid]
-            return response
+                if response.mid in self._wait6:
+                    del self._wait6[response.mid]
+                return response
+            elif response.mid not in self._wait6:
+                """
+                it's an invalid IPv4 response, and no IPv6 response to wait
+                """
+                return response
         elif response.mid in self._wait6 and response.qtype == TYPE.AAAA:
             del self._wait6[response.mid]
-            if response.is_valid() and response.mid in self._wait4:
+            if response.is_valid():
                 """if this is a valid IPv6 response then we ignore IPv4"""
-                del self._wait4[response.mid]
-            return response
+                if response.mid in self._wait4:
+                    del self._wait4[response.mid]
+                return response
+            elif response.mid not in self._wait4:
+                return response
         return None
 
     def _increase_id(self):
@@ -143,15 +157,15 @@ class DNSResolver(object):
             else:
                 callback((hostname, None),
                          Exception('unknown hostname %s' % hostname))
-        if hostname in self._callbacks:
-            del self._callbacks[hostname]
+        del self._callbacks[hostname]
 
     def _send_request(self, hostname):
         DEBUG('query DNS %s' % hostname)
         self._sock.send_dns_request(hostname)
 
     def _handle_response(self, response):
-        if not response:
+        if response is None:
+            """wait another response"""
             return
         if response.is_valid():
             self._cache[response.hostname] = response.answer
@@ -173,6 +187,7 @@ class DNSResolver(object):
         self._cache.sweep()
 
     def resolve(self, host, callback):
+        """resolve a domain names"""
         hostname = tobytes(host)
         if not hostname or not check_hostname(hostname):
             callback(None, Exception('invalid hostname: %s' % hostname))
