@@ -150,6 +150,7 @@ class DNSResolver(object):
         loop.add_periodic(self.handle_periodic)
 
     def _call_callback(self, hostname, ipaddr, error=None):
+        """domain resolved, execute the callbacks"""
         DEBUG('DNS callback %s:%s' % (hostname, ipaddr))
         for callback in self._callbacks.get(hostname, []):
             if ipaddr or error:
@@ -157,7 +158,8 @@ class DNSResolver(object):
             else:
                 callback((hostname, None),
                          Exception('unknown hostname %s' % hostname))
-        del self._callbacks[hostname]
+        if hostname in self._callbacks:
+            del self._callbacks[hostname]
 
     def _send_request(self, hostname):
         DEBUG('query DNS %s' % hostname)
