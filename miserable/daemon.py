@@ -25,12 +25,11 @@ import time
 from miserable.log import *
 from miserable.utils import *
 
-# this module is ported from ShadowVPN daemon.c
-
 
 def daemon_exec(config):
     if not config['daemon']:
         return
+    setuser(config['user'])
 
     if os.name != 'posix':
         raise Exception('daemon mode is only supported on Unix')
@@ -46,8 +45,6 @@ def daemon_exec(config):
     elif command == 'restart':
         daemon_stop(pid_file)
         daemon_start(pid_file, log_file)
-    else:
-        raise Exception('unsupported daemon command %s' % command)
 
 
 def write_pid_file(pid_file, pid):
@@ -91,15 +88,6 @@ def freopen(f, mode, stream):
 
 
 def daemon_start(pid_file, log_file):
-
-    def handle_exit(signum, _):
-        if signum == signal.SIGTERM:
-            sys.exit(0)
-        sys.exit(1)
-
-    signal.signal(signal.SIGINT, handle_exit)
-    signal.signal(signal.SIGTERM, handle_exit)
-
     # fork only once because we are sure parent will exit
     pid = os.fork()
     assert pid != -1
@@ -119,7 +107,6 @@ def daemon_start(pid_file, log_file):
     os.setsid()
     signal.signal(signal.SIG_IGN, signal.SIGHUP)
 
-    PRINT('started')
     os.kill(ppid, signal.SIGTERM)
 
 
@@ -140,7 +127,7 @@ def daemon_stop(pid_file):
     pid = int(pid)
     if pid > 0:
         try:
-            os.kill(pid, signal.SIGTERM)
+            os.kill(pid, signal.SIGINT)
         except OSError as e:
             if e.errno == errno.ESRCH:
                 PRINT('miserable is not running')
@@ -167,7 +154,7 @@ def daemon_stop(pid_file):
     os.unlink(pid_file)
 
 
-def set_user(username):
+def setuser(username):
     if not username:
         return
 

@@ -39,12 +39,11 @@ except ImportError as e:
 
 
 def main():
-    cfg = LocalConfigManager.get_config()
-
-    logging_init(cfg)
-    daemon.daemon_exec(cfg)
-
     try:
+        cfg = LocalConfigManager.get_config()
+
+        logging_init(cfg)
+        daemon.daemon_exec(cfg)
         INFO('starting local at %s:%d' %
              (cfg['local_address'].ipaddr, cfg['local_address'].port))
 
@@ -59,7 +58,6 @@ def main():
             tcp_proxy.close(next_tick=True)
         signal.signal(signal.SIGINT, sigint_handler)
 
-        daemon.set_user(cfg['user'])
         loop.run()
     except Exception as e:
         import traceback
