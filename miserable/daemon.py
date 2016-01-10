@@ -20,138 +20,9 @@ from __future__ import absolute_import, division, print_function, \
 
 import os
 import sys
+import atexit
 import signal
 import time
-from miserable.log import *
-from miserable.utils import *
-
-
-def daemon_exec(config):
-    if not config['daemon']:
-        return
-    setuser(config['user'])
-
-    if os.name != 'posix':
-        raise Exception('daemon mode is only supported on Unix')
-    command = config['daemon']
-    pid_file = config['pid-file']
-    log_file = config['log-file']
-    if command == 'start':
-        daemon_start(pid_file, log_file)
-    elif command == 'stop':
-        daemon_stop(pid_file)
-        # always exit after daemon_stop
-        sys.exit(0)
-    elif command == 'restart':
-        daemon_stop(pid_file)
-        daemon_start(pid_file, log_file)
-
-
-def write_pid_file(pid_file, pid):
-    import fcntl
-    import stat
-
-    try:
-        fd = os.open(pid_file, os.O_RDWR | os.O_CREAT,
-                     stat.S_IRUSR | stat.S_IWUSR)
-    except OSError as e:
-        PRINT(e)
-        return -1
-    flags = fcntl.fcntl(fd, fcntl.F_GETFD)
-    assert flags != -1
-    flags |= fcntl.FD_CLOEXEC
-    r = fcntl.fcntl(fd, fcntl.F_SETFD, flags)
-    assert r != -1
-    # There is no platform independent way to implement fcntl(fd, F_SETLK, &fl)
-    # via fcntl.fcntl. So use lockf instead
-    try:
-        fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB, 0, 0, os.SEEK_SET)
-    except IOError:
-        r = os.read(fd, 32)
-        if r:
-            PRINT('miserable is already running(PID=%s)!' % tostr(r))
-        else:
-            PRINT('miserable is already running(fail to get PID)!')
-        os.close(fd)
-        return -1
-    os.ftruncate(fd, 0)
-    os.write(fd, tobytes(str(pid)))
-    return 0
-
-
-def freopen(f, mode, stream):
-    oldf = open(f, mode)
-    oldfd = oldf.fileno()
-    newfd = stream.fileno()
-    os.close(newfd)
-    os.dup2(oldfd, newfd)
-
-
-def daemon_start(pid_file, log_file):
-    # fork only once because we are sure parent will exit
-    pid = os.fork()
-    assert pid != -1
-
-    if pid > 0:
-        # parent waits for its child
-        time.sleep(5)
-        sys.exit(0)
-
-    # child signals its parent to exit
-    ppid = os.getppid()
-    pid = os.getpid()
-    if write_pid_file(pid_file, pid) != 0:
-        os.kill(ppid, signal.SIGINT)
-        sys.exit(1)
-
-    os.setsid()
-    signal.signal(signal.SIG_IGN, signal.SIGHUP)
-
-    os.kill(ppid, signal.SIGTERM)
-
-
-def daemon_stop(pid_file):
-    import errno
-    try:
-        with open(pid_file) as f:
-            buf = f.read()
-            pid = tostr(buf)
-            if not buf:
-                PRINT('miserable is not running')
-    except IOError as e:
-        if e.errno == errno.ENOENT:
-            # always exit 0 if we are sure daemon is not running
-            PRINT('miserable is not running')
-            return
-        sys.exit(1)
-    pid = int(pid)
-    if pid > 0:
-        try:
-            os.kill(pid, signal.SIGINT)
-        except OSError as e:
-            if e.errno == errno.ESRCH:
-                PRINT('miserable is not running')
-                # always exit 0 if we are sure daemon is not running
-                return
-            PRINT(e)
-            sys.exit(1)
-    else:
-        PRINT('invalid pid file!')
-
-    # sleep for maximum 10s
-    for i in range(0, 200):
-        try:
-            # query for the pid
-            os.kill(pid, 0)
-        except OSError as e:
-            if e.errno == errno.ESRCH:
-                break
-        time.sleep(0.05)
-    else:
-        PRINT('timed out when stopping pid %d' % pid)
-        sys.exit(1)
-    PRINT('stopped')
-    os.unlink(pid_file)
 
 
 def setuser(username):
@@ -164,7 +35,7 @@ def setuser(username):
     try:
         pwrec = pwd.getpwnam(username)
     except KeyError:
-        ERROR('user not found: %s' % username)
+        sys.stderr.write('user not found: %s\n' % username)
         raise
     user = pwrec[0]
     uid = pwrec[2]
@@ -174,7 +45,7 @@ def setuser(username):
     if uid == cur_uid:
         return
     if cur_uid != 0:
-        ERROR('can not set user as nonroot user')
+        sys.stderr.write('can not set user as nonroot user\n')
         # will raise later
 
     # inspired by supervisor
@@ -184,3 +55,123 @@ def setuser(username):
         os.setgroups(groups)
     os.setgid(gid)
     os.setuid(uid)
+
+
+def dfork():
+    try:
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)
+    except OSError as e:
+        sys.stderr.write("fork failed: %d (%s)\n" % (e.errno, e.strerror))
+        sys.exit(1)
+
+
+def rpid(pidfile):
+    """read pid from pid file"""
+    try:
+        pf = open(pidfile, 'r')
+        pid = int(pf.read().strip())
+        pf.close()
+    except IOError:
+        pid = None
+    return pid
+
+
+class Daemon(object):
+    """
+    A generic adamon class
+    """
+
+    def __init__(self, pidfile, stdin='/dev/null', stdout='/dev/null',
+                 stderr='/dev/null', user=None):
+        self.stdin = stdin
+        self.stdout = stdout
+        self.stderr = stderr
+        self.pidfile = pidfile
+        self.user = user
+
+    def daemonize(self):
+        """"""
+        dfork()
+
+        os.chdir('/')
+        os.setsid()
+        os.umask(0)
+
+        dfork()
+
+        sys.stdout.flush()
+        sys.stderr.flush()
+        si = open(self.stdin, 'r')
+        so = open(self.stdout, 'a+')
+        se = open(self.stderr, 'a+')
+        os.dup2(si.fileno(), sys.stdin.fileno())
+        os.dup2(so.fileno(), sys.stdout.fileno())
+        os.dup2(se.fileno(), sys.stderr.fileno())
+
+        atexit.register(self.delpid)
+        pid = str(os.getpid())
+        open(self.pidfile, 'w+').write('%s\n' % pid)
+
+    def delpid(self):
+        """delete pidfile at exit"""
+        try:
+            os.remove(self.pidfile)
+        except:
+            pass
+
+    def start(self):
+        """start daemon"""
+        if self.user:
+            setuser(self.user)
+
+        pid = rpid(self.pidfile)
+
+        if pid:
+            message = 'pidfile %s already exists. Daemon is already running?\n'
+            sys.stderr.write(message)
+            sys.exit(1)
+
+        self.daemonize()
+
+    def stop(self):
+        """Stop the daemon"""
+        pid = rpid(self.pidfile)
+
+        if not pid:
+            message = 'pidfile %s does not exist,Daemon is not running?\n' % self.pidfile
+            sys.stderr.write(message)
+            return
+
+        try:
+            os.kill(pid, signal.SIGINT)
+            time.sleep(0.5)
+        except OSError as e:
+            err = str(e)
+            if 'No such process' in err:
+                if os.path.exists(self.pidfile):
+                    self.delpid()
+            else:
+                sys.stderr.write(err + '\n')
+                sys.exit(1)
+
+    def restart(self):
+        self.stop()
+        self.start()
+
+
+class MiserableDaemon(Daemon):
+
+    def __init__(self, cmd, pidfile, user):
+        self._cmd = cmd
+        super(MiserableDaemon, self).__init__(pidfile=pidfile, user=user)
+
+    def execute(self):
+        if self._cmd == 'start':
+            self.start()
+        elif self._cmd == 'stop':
+            self.stop()
+            sys.exit(0)
+        elif self._cmd == 'restart':
+            self.restart()

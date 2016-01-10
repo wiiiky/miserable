@@ -58,7 +58,7 @@ def logging_init(cfg):
         'format': '%(asctime)s %(levelname)-8s %(message)s',
         'datefmt': '%m-%d %H:%M:%S'
     }
-    if cfg['daemon'] == 'start' and cfg['log-file']:
+    if cfg['daemon'] in ('start', 'restart') and cfg['log-file']:
         config['filename'] = cfg['log-file']
     else:
         """only enable colorful logging when log to terminal"""
