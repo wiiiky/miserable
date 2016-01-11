@@ -186,7 +186,10 @@ class LocalTransfer(object):
     @stop_transfer_if_fail
     def _dns_resolved(self, result, error):
         """remote ip address is resolved"""
-        if error:
+        if self._client is None:
+            # ignore DNS resolve callback if transfer already closed
+            return
+        elif error:
             self.stop(warning=error)
             return
         self._remote_address.ipaddr = result[1]
