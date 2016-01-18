@@ -28,6 +28,7 @@ try:
     from miserable.daemon import MiserableDaemon
     from miserable.dns.resolver import DNSResolver
     from miserable.tcp.proxy import TCPProxy
+    from miserable.udp.proxy import UDPProxy
     from miserable.config import LocalConfigManager
     from miserable.log import *
 except ImportError as e:
@@ -36,6 +37,7 @@ except ImportError as e:
     from miserable.daemon import MiserableDaemon
     from miserable.dns.resolver import DNSResolver
     from miserable.tcp.proxy import TCPProxy
+    from miserable.udp.proxy import UDPProxy
     from miserable.config import LocalConfigManager
     from miserable.log import *
 
@@ -52,9 +54,12 @@ def main():
 
         dns_resolver = DNSResolver()
         tcp_proxy = TCPProxy(dns_resolver)
+        udp_proxy = UDPProxy(dns_resolver)
+
         loop = eventloop.EventLoop()
         dns_resolver.add_to_loop(loop)
         tcp_proxy.add_to_loop(loop)
+        udp_proxy.add_to_loop(loop)
 
         def sigint_handler(signum, _):
             DEBUG('received SIGINT, doing graceful shutting down..')

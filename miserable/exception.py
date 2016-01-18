@@ -90,3 +90,7 @@ class UnexpectedEventError(BaseException):
 
 class InvalidRequestException(BaseException):
     pass
+
+
+class ProgrammingError(BaseException):
+    pass

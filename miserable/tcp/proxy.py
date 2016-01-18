@@ -59,10 +59,8 @@ class TCPProxy(object):
         self._transfers = []
 
     def add_to_loop(self, loop):
-        if self._loop:
-            raise Exception('already add to loop')
-        if self._closed:
-            raise Exception('already closed')
+        if self._loop or self._closed:
+            raise ProgrammingError('illegal status of TCPProxy')
         self._loop = loop
         self._loop.add(self._socket, POLL_IN | POLL_ERR, self)
         self._loop.add_periodic(self.handle_periodic)
