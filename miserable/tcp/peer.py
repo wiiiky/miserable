@@ -19,23 +19,7 @@ from __future__ import absolute_import, division, print_function, \
 
 import socket
 from miserable.eventloop import *
-from miserable.exception import *
-
-
-class return_val_if_wouldblock(object):
-
-    def __init__(self, value):
-        self._value = value
-
-    def __call__(self, f):
-        def wrapper(*args, **kwargs):
-            try:
-                return f(*args, **kwargs)
-            except (OSError, IOError) as e:
-                if exception_wouldblock(e):
-                    return self._value
-                raise e
-        return wrapper
+from miserable.utils import return_val_if_wouldblock
 
 
 class Peer(object):

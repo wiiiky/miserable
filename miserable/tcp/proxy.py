@@ -25,7 +25,6 @@ from miserable.utils import *
 from miserable.exception import *
 from miserable.eventloop import *
 
-from miserable.tcp.peer import return_val_if_wouldblock
 from miserable.tcp.transfer import LocalTransfer
 from miserable.config import LocalConfigManager
 

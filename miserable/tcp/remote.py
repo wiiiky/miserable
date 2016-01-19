@@ -18,18 +18,8 @@ from __future__ import absolute_import, division, print_function, \
     with_statement
 
 
-from miserable.exception import *
+from miserable.utils import ignore_inprogress_exception
 from miserable.tcp.peer import Peer
-
-
-def ignore_inprogress_exception(f):
-    def wrapper(*args, **kwargs):
-        try:
-            return f(*args, **kwargs)
-        except (OSError, IOError) as e:
-            if not exception_inprogress(e):
-                raise e
-    return wrapper
 
 
 class Remote(Peer):

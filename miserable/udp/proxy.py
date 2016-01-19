@@ -37,6 +37,7 @@ class UDPProxy(object):
 
         self._loop = None
         self._closed = False
+        self._local_address = laddr
         self._dns_resolver = dns_resolver
         self._socket = sock
 

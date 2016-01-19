@@ -20,6 +20,7 @@ from __future__ import absolute_import, division, print_function, \
 import re
 import socket
 import ipaddress
+from miserable.exception import *
 
 
 def ip_address(addr):
@@ -131,3 +132,29 @@ def addr2bytes(ip):
         return socket.AF_INET, socket.inet_pton(socket.AF_INET, ip)
     except OSError:
         return socket.AF_INET6, socket.inet_pton(socket.AF_INET6, ip)
+
+
+class return_val_if_wouldblock(object):
+
+    def __init__(self, value):
+        self._value = value
+
+    def __call__(self, f):
+        def wrapper(*args, **kwargs):
+            try:
+                return f(*args, **kwargs)
+            except (OSError, IOError) as e:
+                if exception_wouldblock(e):
+                    return self._value
+                raise e
+        return wrapper
+
+
+def ignore_inprogress_exception(f):
+    def wrapper(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except (OSError, IOError) as e:
+            if not exception_inprogress(e):
+                raise e
+    return wrapper
