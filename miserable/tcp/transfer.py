@@ -75,8 +75,8 @@ class LocalTransfer(object):
     @property
     def display_name(self):
         client = '%s:%s' % (self._client.ipaddr, self._client.port)
-        if self._server_address:
-            server = '%s:%s' % (self._server_address.ipaddr,
+        if self._server_address is not None:
+            server = '%s:%s' % (self._server_address.hostname,
                                 self._server_address.port)
         else:
             server = 'None'
@@ -107,8 +107,7 @@ class LocalTransfer(object):
         if event & POLL_IN:
             data = self._client.read()
             if data == b'':
-                self.stop(info='client %s:%s closed' %
-                          (self._client.ipaddr, self._client.port))
+                self.stop(info='%s closed by client' % self.display_name)
                 return
 
         if self._client.state == ClientState.UDP_ASSOC:
@@ -156,7 +155,7 @@ class LocalTransfer(object):
             self._remote = Remote(None, self._remote_address, self._loop,
                                   self._encryptor)
             self._remote.write(data[3:])
-            if self._remote_address.ipaddr:
+            if self._remote_address.ipaddr:     # ipaddr
                 self._connect_to_remote()
             else:
                 self._dns_resolver.resolve(self._remote_address.hostname,
@@ -173,9 +172,7 @@ class LocalTransfer(object):
         if event & POLL_IN:
             data = self._remote.read()
             if data == b'':
-                self.stop(info=('remote %s:%s closed' %
-                                (self._server_address.hostname,
-                                 self._server_address.port)))
+                self.stop(info='%s closed by remote' % self.display_name)
                 return
             self._client.write(data)
 
