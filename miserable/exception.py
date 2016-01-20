@@ -77,6 +77,13 @@ class InvalidSockVersionException(BaseException):
         super(InvalidSockVersionException, self).__init__(msg)
 
 
+class InvalidFragmentException(BaseException):
+
+    def __init__(self, frag):
+        msg = u'invalid UDP fragment %s' % (frag, )
+        super(InvalidFragmentException, self).__init__(msg)
+
+
 class UnknownCommandException(BaseException):
 
     def __init__(self, cmd):

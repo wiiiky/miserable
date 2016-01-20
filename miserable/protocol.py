@@ -40,17 +40,8 @@ ADDRTYPE_IPV6 = 4
 ADDRTYPE_DOMAIN = 3
 
 
-def parse_tcp_request(data):
-    """parse SOCKS5 request"""
-    vsn = data[0]
-    cmd = data[1]
-    if vsn != 5:
-        raise InvalidSockVersionException(vsn)
-    elif cmd not in (SOCKS5Command.CONNECT, SOCKS5Command.BIND,
-                     SOCKS5Command.UDP_ASSOCIATE):
-        raise InvalidRequestException('invalid request command')
-
-    data = data[3:]     # skip vsn,cmd,rsv
+def parse_request_address(data):
+    """parse address"""
     atype = data[0]
     if atype == ADDRTYPE_IPV4:
         dest_addr = socket.inet_ntop(socket.AF_INET, data[1:5])
@@ -64,12 +55,35 @@ def parse_tcp_request(data):
         dest_port = struct.unpack('!H', data[2 + dlen:4 + dlen])[0]
     else:
         raise InvalidRequestException('unknown address type')
+    return atype, dest_addr, dest_port
+
+
+def parse_tcp_request(data):
+    """parse TCP request"""
+    vsn = data[0]
+    cmd = data[1]
+    if vsn != 5:
+        raise InvalidSockVersionException(vsn)
+    elif cmd not in (SOCKS5Command.CONNECT, SOCKS5Command.BIND,
+                     SOCKS5Command.UDP_ASSOCIATE):
+        raise InvalidRequestException('invalid request command')
+
+    atype, dest_addr, dest_port = parse_request_address(data[3:])
     return vsn, cmd, atype, dest_addr, dest_port
 
 
 def build_tcp_reply(vsn, rep, rsv, addr, port):
-    """build a SOCKS5 reply"""
+    """build a TCP reply"""
     atype = 1 if addr.family == socket.AF_INET else 4
     data = struct.pack('!BBBB', vsn, rep, rsv, atype) + addr.packed\
         + struct.pack('!H', port)
     return data
+
+
+def parse_udp_request(data):
+    """parse UDP request"""
+    frag = data[2]
+    if frag != 0:
+        raise InvalidFragmentException(frag)
+    atype, dest_addr, dest_port = parse_request_address(data[3:])
+    return frag, atype, dest_addr, dest_port
