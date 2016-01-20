@@ -20,6 +20,7 @@ if __name__ == '__main__':
     import urllib
 
     class MainHandler(tornado.web.RequestHandler):
+
         def get(self, project):
             try:
                 with open('/tmp/%s-coverage' % project, 'rb') as f:

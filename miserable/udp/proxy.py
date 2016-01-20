@@ -21,6 +21,8 @@ from __future__ import absolute_import, division, print_function, \
 import socket
 from miserable.eventloop import *
 from miserable.exception import *
+from miserable.encrypt import Encryptor
+from miserable.protocol import parse_udp_request
 from miserable.config import LocalConfigManager
 
 
@@ -40,6 +42,7 @@ class UDPProxy(object):
         self._local_address = laddr
         self._dns_resolver = dns_resolver
         self._socket = sock
+        self._encryptor = Encryptor(cfg['password'], cfg['method'])
 
     def add_to_loop(self, loop):
         if self._loop or self._closed:
@@ -47,3 +50,7 @@ class UDPProxy(object):
         self._loop = loop
         self._loop.add(self._socket, POLL_IN | POLL_ERR, self)
         # self._loop.add_periodic(self.handle_periodic)
+
+    def handle_event(self, sock, fd, event):
+        data, addr = sock.recvfrom(65536)
+        frag, atype, dest_addr, dest_port = parse_udp_request(data)

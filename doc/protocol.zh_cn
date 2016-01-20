@@ -89,3 +89,24 @@ LOCAL <==> REMOTE   【TCP】
     2. local向remote转发client的连接服务器的请求，格式如CLIENT <==> LOCAL【TCP】一节的3所描述，数据经过加密。
     3. remote解密连接请求，并连接连接指定的server。
     4. local和server经过加密转化数据。
+
+CLIENT <==> LOCAL   【UDP】
+    0. local启动并监听指定端口号。
+    1. client向local发送UDP数据包，包结构如下
+        +----+------+------+----------+----------+----------+
+        |RSV | FRAG | ATYP | DST.ADDR | DST.PORT |   DATA   |
+        +----+------+------+----------+----------+----------+
+        | 2  |  1   |  1   | Variable |    2     | Variable |
+        +----+------+------+----------+----------+----------+
+        RSV是保留字段，总是0；FRAG是分段标志，SS没有使用，置为0；
+        ATYP、DST.ADDR、DST.PORT和上文TCP中的一样。
+        TCP协议中，DATA和前面的首部是分开发送的，在UDP协议中他们都被封装在一个UDP数据包中。
+        每一个UDP数据包都需要上述结构。
+    2. local解析数据包并加密，转发给remote。
+    3. remote给local返回UDP响应数据，解密得到1中结构的数据，转发给client。
+
+LOCAL <==> REMOTE   【UDP】
+    0. remote启动并监听指定端口号。
+    1. local发送加密过后的数据给remote，remote解密。
+    2. 根据数据首部中指定的DST.ADDR和DST.PORT将DATA转发出去。
+    3. 收到来自server的响应数据，封装后加密返回给local

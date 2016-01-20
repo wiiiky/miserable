@@ -55,6 +55,7 @@ def init_table(key):
 
 
 class TableCipher(object):
+
     def __init__(self, cipher_name, key, iv, op):
         self._encrypt_table, self._decrypt_table = init_table(key)
         self._op = op
