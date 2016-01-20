@@ -57,6 +57,7 @@ def load_libsodium():
 
 
 class SodiumCrypto(object):
+
     def __init__(self, cipher_name, key, iv, op):
         if not loaded:
             load_libsodium()

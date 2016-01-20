@@ -131,12 +131,12 @@ class LocalTransfer(object):
             receive the server addr,
             give client a feedback and connect to remote
             """
-            vsn, cmd, atype, server_addr, server_port = parse_request(data)
+            vsn, cmd, atype, server_addr, server_port = parse_tcp_request(data)
             if cmd == SOCKS5Command.UDP_ASSOCIATE:
                 DEBUG('UDP associate')
-                self._client.write(build_reply(5, 0, 0,
-                                               self._client.ipaddr,
-                                               self._client.port))
+                self._client.write(build_tcp_reply(5, 0, 0,
+                                                   self._client.ipaddr,
+                                                   self._client.port))
                 self._client.state = ClientState.UDP_ASSOC
                 # just wait for the client to disconnect
                 return
@@ -149,8 +149,8 @@ class LocalTransfer(object):
                   self._client.port))
             self._server_address = Address(server_addr, server_port)
             # forward address to remote
-            self._client.write(build_reply(5, 0, 0, self._local_address.ipaddr,
-                                           self._local_address.port))
+            self._client.write(build_tcp_reply(5, 0, 0, self._local_address.ipaddr,
+                                               self._local_address.port))
             self._client.state = ClientState.DNS
             self._remote = Remote(None, self._remote_address, self._loop,
                                   self._encryptor)

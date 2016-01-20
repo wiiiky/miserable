@@ -40,7 +40,7 @@ ADDRTYPE_IPV6 = 4
 ADDRTYPE_DOMAIN = 3
 
 
-def parse_request(data):
+def parse_tcp_request(data):
     """parse SOCKS5 request"""
     vsn = data[0]
     cmd = data[1]
@@ -67,7 +67,7 @@ def parse_request(data):
     return vsn, cmd, atype, dest_addr, dest_port
 
 
-def build_reply(vsn, rep, rsv, addr, port):
+def build_tcp_reply(vsn, rep, rsv, addr, port):
     """build a SOCKS5 reply"""
     atype = 1 if addr.family == socket.AF_INET else 4
     data = struct.pack('!BBBB', vsn, rep, rsv, atype) + addr.packed\

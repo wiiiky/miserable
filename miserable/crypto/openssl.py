@@ -70,6 +70,7 @@ def load_cipher(cipher_name):
 
 
 class OpenSSLCrypto(object):
+
     def __init__(self, cipher_name, key, iv, op):
         self._ctx = None
         if not loaded:
