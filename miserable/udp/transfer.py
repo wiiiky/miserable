@@ -16,3 +16,13 @@
 
 from __future__ import absolute_import, division, print_function, \
     with_statement
+
+
+from miserable.utils import Address
+
+
+class LocalTransfer(object):
+
+    def __init__(self, laddr, raddr):
+        self._laddr = Address(laddr[0], laddr[1])
+        self._raddr = Address(raddr[0], raddr[1])

@@ -46,16 +46,19 @@ def parse_request_address(data):
     if atype == ADDRTYPE_IPV4:
         dest_addr = socket.inet_ntop(socket.AF_INET, data[1:5])
         dest_port = struct.unpack('!H', data[5:7])[0]
+        payload = data[7:]
     elif atype == ADDRTYPE_IPV6:
         dest_addr = socket.inet_ntop(socket.AF_INET6, data[1:17])
         dest_port = struct.unpack('!H', data[17:19])[0]
+        payload = data[19:]
     elif atype == ADDRTYPE_DOMAIN:
         dlen = data[1]
         dest_addr = data[2:2 + dlen]
         dest_port = struct.unpack('!H', data[2 + dlen:4 + dlen])[0]
+        payload = data[4 + dlen:]
     else:
         raise InvalidRequestException('unknown address type')
-    return atype, dest_addr, dest_port
+    return atype, dest_addr, dest_port, payload
 
 
 def parse_tcp_request(data):
@@ -68,7 +71,7 @@ def parse_tcp_request(data):
                      SOCKS5Command.UDP_ASSOCIATE):
         raise InvalidRequestException('invalid request command')
 
-    atype, dest_addr, dest_port = parse_request_address(data[3:])
+    atype, dest_addr, dest_port, payload = parse_request_address(data[3:])
     return vsn, cmd, atype, dest_addr, dest_port
 
 
@@ -85,5 +88,5 @@ def parse_udp_request(data):
     frag = data[2]
     if frag != 0:
         raise InvalidFragmentException(frag)
-    atype, dest_addr, dest_port = parse_request_address(data[3:])
-    return frag, atype, dest_addr, dest_port
+    atype, dest_addr, dest_port, payload = parse_request_address(data[3:])
+    return frag, atype, dest_addr, dest_port, payload

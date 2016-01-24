@@ -35,7 +35,7 @@ class Peer(object):
         @encryptor
         """
         self._socket = sock
-        self._address = addr
+        self._addr = addr
         self._encryptor = encryptor
         self._bufsize = bufsize
         self._wbuf = b''
@@ -74,15 +74,15 @@ class Peer(object):
 
     @property
     def address(self):
-        return self._address
+        return self._addr
 
     @property
     def ipaddr(self):
-        return self._address.ipaddr
+        return self._addr.ipaddr
 
     @property
     def port(self):
-        return self._address.port
+        return self._addr.port
 
     @return_val_if_wouldblock(None)
     def read(self):

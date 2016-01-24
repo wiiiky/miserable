@@ -53,4 +53,4 @@ class UDPProxy(object):
 
     def handle_event(self, sock, fd, event):
         data, addr = sock.recvfrom(65536)
-        frag, atype, dest_addr, dest_port = parse_udp_request(data)
+        frag, atype, dest_addr, dest_port, payload = parse_udp_request(data)

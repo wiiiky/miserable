@@ -61,8 +61,8 @@ class LocalTransfer(object):
         self._server_address = None
         self._dns_resolver = dns_resolver
         self._last_active = time.time()
-        self._remote_address = cfg['remote_address']
-        self._local_address = cfg['local_address']
+        self._raddr = cfg['remote_address']
+        self._laddr = cfg['local_address']
 
     @property
     def closed(self):
@@ -149,16 +149,16 @@ class LocalTransfer(object):
                   self._client.port))
             self._server_address = Address(server_addr, server_port)
             # forward address to remote
-            self._client.write(build_tcp_reply(5, 0, 0, self._local_address.ipaddr,
-                                               self._local_address.port))
+            self._client.write(build_tcp_reply(5, 0, 0, self._laddr.ipaddr,
+                                               self._laddr.port))
             self._client.state = ClientState.DNS
-            self._remote = Remote(None, self._remote_address, self._loop,
+            self._remote = Remote(None, self._raddr, self._loop,
                                   self._encryptor)
             self._remote.write(data[3:])
-            if self._remote_address.ipaddr:     # ipaddr
+            if self._raddr.ipaddr:     # ipaddr
                 self._connect_to_remote()
             else:
-                self._dns_resolver.resolve(self._remote_address.hostname,
+                self._dns_resolver.resolve(self._raddr.hostname,
                                            self._dns_resolved)
         elif data and self._remote:
             self._remote.write(data)
@@ -189,12 +189,12 @@ class LocalTransfer(object):
         elif error:
             self.stop(warning=error)
             return
-        self._remote_address.ipaddr = result[1]
+        self._raddr.ipaddr = result[1]
         self._connect_to_remote()
 
     def _connect_to_remote(self):
-        ipaddr = self._remote_address.ipaddr
-        port = self._remote_address.port
+        ipaddr = self._raddr.ipaddr
+        port = self._raddr.port
         self._remote.socket = socket.socket(ipaddr.family, socket.SOCK_STREAM,
                                             socket.SOL_TCP)
         self._remote.connect((ipaddr.compressed, port))
