@@ -58,11 +58,11 @@ class LocalTransfer(object):
         self._loop = loop
         self._client = Client(sock, addr, loop, self._encryptor)
         self._remote = None
-        self._server_address = None
         self._dns_resolver = dns_resolver
         self._last_active = time.time()
         self._raddr = cfg['remote_address']
         self._laddr = cfg['local_address']
+        self._saddr = None
 
     @property
     def closed(self):
@@ -75,9 +75,9 @@ class LocalTransfer(object):
     @property
     def display_name(self):
         client = '%s:%s' % (self._client.ipaddr, self._client.port)
-        if self._server_address is not None:
-            server = '%s:%s' % (self._server_address.hostname,
-                                self._server_address.port)
+        if self._saddr is not None:
+            server = '%s:%s' % (self._saddr.hostname,
+                                self._saddr.port)
         else:
             server = 'None'
         return '%s <==> %s' % (client, server)
@@ -147,7 +147,7 @@ class LocalTransfer(object):
             INFO('connecting %s:%d from %s:%d' %
                  (server_addr, server_port, self._client.ipaddr,
                   self._client.port))
-            self._server_address = Address(server_addr, server_port)
+            self._saddr = Address(server_addr, server_port)
             # forward address to remote
             self._client.write(build_tcp_reply(5, 0, 0, self._laddr.ipaddr,
                                                self._laddr.port))

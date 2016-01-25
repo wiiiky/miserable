@@ -52,6 +52,9 @@ class Address(object):
         self._hostname = name
         self._port = port
 
+    def __eq__(self, other):
+        return self._port == other._port and self._ipaddr == other._ipaddr
+
     @property
     def family(self):
         return self._ipaddr.family

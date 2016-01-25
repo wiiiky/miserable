@@ -21,9 +21,11 @@ from __future__ import absolute_import, division, print_function, \
 import socket
 from miserable.eventloop import *
 from miserable.exception import *
+from miserable.utils import Address
 from miserable.encrypt import Encryptor
 from miserable.protocol import parse_udp_request
 from miserable.config import LocalConfigManager
+from miserable.udp.transfer import LocalTransfer
 
 
 class UDPProxy(object):
@@ -39,10 +41,18 @@ class UDPProxy(object):
 
         self._loop = None
         self._closed = False
-        self._local_address = laddr
+        self._laddr = laddr
         self._dns_resolver = dns_resolver
         self._socket = sock
-        self._encryptor = Encryptor(cfg['password'], cfg['method'])
+        self._transfers = set()
+
+    def _find_transfer(self, caddr, saddr):
+        for f in self._transfers:
+            if f.caddr == caddr and f.saddr == saddr:
+                return f
+        f = LocalTransfer(self._loop, caddr, saddr, self._dns_resolver)
+        self._transfers.add(f)
+        return f
 
     def add_to_loop(self, loop):
         if self._loop or self._closed:
@@ -52,5 +62,9 @@ class UDPProxy(object):
         # self._loop.add_periodic(self.handle_periodic)
 
     def handle_event(self, sock, fd, event):
-        data, addr = sock.recvfrom(65536)
+        data, addr = sock.recvfrom(1 << 16)
         frag, atype, dest_addr, dest_port, payload = parse_udp_request(data)
+        transfer = self._find_transfer(
+            Address(addr[0], addr[1]), Address(dest_addr, dest_port))
+        transfer.start()
+        transfer.write(data)
