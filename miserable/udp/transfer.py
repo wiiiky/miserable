@@ -21,6 +21,7 @@ from __future__ import absolute_import, division, print_function, \
 import socket
 from miserable.utils import Address
 from miserable.config import LocalConfigManager
+from miserable.encrypt import *
 from miserable.eventloop import *
 from miserable.log import *
 
@@ -37,8 +38,9 @@ class LocalTransfer(object):
         self._caddr = caddr
         self._saddr = saddr
         self._dns_resolver = dns_resolver
-        self._raddr = cfg['_remote_address']
-        self._encryptor = Encryptor(cfg['password'], cfg['method'])
+        self._raddr = cfg['remote_address']
+        self._password = cfg['password']
+        self._method = cfg['method']
         self._pending = []
 
     @property
@@ -50,36 +52,37 @@ class LocalTransfer(object):
         return self._saddr
 
     def start(self, events=POLL_IN):
-        self._loop.add(self._socket, events, this)
-        self._events = events
+        self._loop.add(self._socket, events, self)
 
     def handle_event(self, sock, fd, event):
+        """receive package from remote, transfer to client"""
         if event & POLL_ERR:
             self.stop(warning='udp %s error' % self.display_name)
             return
         data, addr = self._socket.recvfrom(1 << 16)
-        data = self._encryptor.decrypt(data)
+        data = encrypt_all(self._password, self._method, 0, data)
         if not data:
             self.stop(warning='udp %s invalid data' % self.display_name)
             return
         self._socket.sendto(data, (self._caddr.compressed, self._caddr.port))
 
     def write(self, data):
-        data = self._encryptor.encrypt(data)
+        print('write', self._password, self._method, data)
+        data = encrypt_all(self._password, self._method, 1, data)
         if self._raddr.ipaddr:
             self._send(data)
         else:
-            self._dns_resolver.resolve(self._raddr.hostname,
-                                       self._dns_resolved)
             self._pending.append(data)
+            self._dns_resolver.resolve(
+                self._raddr.hostname, self._dns_resolved)
 
     def _send(self, data):
+        print('send', encrypt_all(self._password, self._method, 0, data))
         self._socket.sendto(data, (self._raddr.compressed, self._raddr.port))
 
     def _dns_resolved(self, result, error):
         """remote ip address is resolved"""
         if self._socket is None:
-            # ignore DNS resolve callback if transfer already closed
             return
         elif error:
             self.stop(warning=error)

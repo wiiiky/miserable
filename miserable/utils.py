@@ -86,7 +86,7 @@ class Address(object):
 
 def tostr(data):
     """convert bytes to str"""
-    if type(data) is bytes:
+    if type(data) is bytes and bytes is not str:
         data = data.decode('utf8')
     return data
 
@@ -95,7 +95,7 @@ def tobytes(data):
     """convert str or int to bytes"""
     if type(data) is int:
         data = chr(data)
-    if type(data) is str:
+    if type(data) is str and str is not bytes:
         data = data.encode('utf8')
     return data
 

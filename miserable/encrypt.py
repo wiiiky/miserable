@@ -58,8 +58,8 @@ def EVP_BytesToKey(password, key_len, iv_len):
         data = password
         if i > 0:
             data = m[i - 1] + password
-        md5.update(data)
-        m.append(md5.digest())
+        md5.update(tobytes(data))
+        m.append(tobytes(md5.digest()))
         i += 1
     ms = b''.join(m)
     key = ms[:key_len]
@@ -137,7 +137,7 @@ def encrypt_all(password, method, op, data):
     method = method.lower()
     (key_len, iv_len, m) = method_supported[method]
     if key_len > 0:
-        key, _ = EVP_BytesToKey(password, key_len, iv_len)
+        key, _ = EVP_BytesToKey(tobytes(password), key_len, iv_len)
     else:
         key = password
     if op:

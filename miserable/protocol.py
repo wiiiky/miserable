@@ -77,10 +77,24 @@ def parse_tcp_request(data):
 
 def build_tcp_reply(vsn, rep, rsv, addr, port):
     """build a TCP reply"""
-    atype = 1 if addr.family == socket.AF_INET else 4
-    data = struct.pack('!BBBB', vsn, rep, rsv, atype) + addr.packed\
+    atype = ADDRTYPE_IPV4 if addr.family == socket.AF_INET else ADDRTYPE_IPV6
+    packed = struct.pack('!BBBB', vsn, rep, rsv, atype) + addr.packed\
         + struct.pack('!H', port)
-    return data
+    return packed
+
+
+def build_udp_request(addr, port, data):
+    """"""
+    atype = ADDRTYPE_DOMAIN
+    if hasattr(addr, 'family'):
+        atype = ADDRTYPE_IPV4 if addr.family == socket.AF_INET else ADDRTYPE_IPV6
+    packed = struct.pack('!Hbb', 0, 0, atype)
+    if atype == ADDRTYPE_DOMAIN:
+        packed += struct.pack('!b', len(addr)) + addr
+    else:
+        packed += addr.packed
+    packed += struct.pack('!H', port) + data
+    return packed
 
 
 def parse_udp_request(data):

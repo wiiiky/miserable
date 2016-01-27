@@ -51,6 +51,7 @@ class UDPProxy(object):
             if f.caddr == caddr and f.saddr == saddr:
                 return f
         f = LocalTransfer(self._loop, caddr, saddr, self._dns_resolver)
+        f.start()
         self._transfers.add(f)
         return f
 
@@ -63,8 +64,8 @@ class UDPProxy(object):
 
     def handle_event(self, sock, fd, event):
         data, addr = sock.recvfrom(1 << 16)
-        frag, atype, dest_addr, dest_port, payload = parse_udp_request(data)
+        frag, atype, server_addr, server_port, payload = parse_udp_request(
+            data)
         transfer = self._find_transfer(
-            Address(addr[0], addr[1]), Address(dest_addr, dest_port))
-        transfer.start()
+            Address(addr[0], addr[1]), Address(server_addr, server_port))
         transfer.write(data)
