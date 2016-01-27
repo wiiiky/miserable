@@ -67,10 +67,11 @@ def main():
         signal.signal(signal.SIGINT, sigint_handler)
 
         loop.run()
+    except OSError as e:
+        ERROR(e)
     except Exception as e:
         import traceback
         traceback.print_exc()
-        sys.exit(1)
 
 if __name__ == '__main__':
     main()
