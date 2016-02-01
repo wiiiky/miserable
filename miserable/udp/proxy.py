@@ -19,6 +19,7 @@ from __future__ import absolute_import, division, print_function, \
 
 
 import socket
+import time
 from miserable.eventloop import *
 from miserable.exception import *
 from miserable.utils import Address
@@ -44,6 +45,7 @@ class UDPProxy(object):
         self._laddr = laddr
         self._dns_resolver = dns_resolver
         self._socket = sock
+        self._timeout = cfg['timeout']
         self._transfers = set()
 
     def _find_transfer(self, caddr, saddr):
@@ -60,6 +62,22 @@ class UDPProxy(object):
             raise ProgrammingError('illegal status of UDPProxy')
         self._loop = loop
         self._loop.add(self._socket, POLL_IN | POLL_ERR, self)
+        self._loop.add_periodic(self.handle_periodic)
+
+    def handle_periodic(self):
+        self._check_timeout()
+
+    def _check_timeout(self):
+        now = time.time()
+        transfers = set()
+        for t in self._transfers:
+            if t.closed:    # skip closed transfer
+                continue
+            if now - t.last_active > self._timeout:
+                t.stop(info='%s is timeout' % t.display_name)
+            else:
+                transfers.add(t)
+        self._transfers = transfers
 
     def handle_event(self, sock, fd, event):
         data, addr = sock.recvfrom(1 << 16)

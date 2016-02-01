@@ -19,6 +19,7 @@ from __future__ import absolute_import, division, print_function, \
 
 
 import socket
+import time
 from miserable.utils import Address
 from miserable.config import LocalConfigManager
 from miserable.encrypt import *
@@ -37,10 +38,19 @@ class LocalTransfer(object):
         self._caddr = caddr
         self._saddr = saddr
         self._dns_resolver = dns_resolver
+        self._last_active = time.time()
         self._raddr = cfg['remote_address']
         self._password = cfg['password']
         self._method = cfg['method']
         self._pending = []
+
+    @property
+    def closed(self):
+        return self._socket is None
+
+    @property
+    def last_active(self):
+        return self._last_active
 
     @property
     def caddr(self):
@@ -58,15 +68,19 @@ class LocalTransfer(object):
         if event & POLL_ERR:
             self.stop(warning='udp %s error' % self.display_name)
             return
+        self._last_active = time.time()
         data, addr = self._socket.recvfrom(1 << 16)
         data = encrypt_all(self._password, self._method, 0, data)
         if not data:
             self.stop(warning='udp %s invalid data' % self.display_name)
             return
+        DEBUG('UDP forward from %s to %s' %
+              (self._saddr.display, self._caddr.display))
         self._socket.sendto(b'\x00\x00\x00' + data,
                             (self._caddr.compressed, self._caddr.port))
 
     def write(self, data):
+        self._last_active = time.time()
         data = encrypt_all(self._password, self._method, 1, data)
         if self._raddr.ipaddr:
             self._send(data)
@@ -76,6 +90,8 @@ class LocalTransfer(object):
                 self._raddr.hostname, self._dns_resolved)
 
     def _send(self, data):
+        DEBUG('UDP forward from %s to %s' %
+              (self._caddr.display, self._saddr.display))
         self._socket.sendto(data, (self._raddr.compressed, self._raddr.port))
 
     def _dns_resolved(self, result, error):

@@ -56,6 +56,10 @@ class Address(object):
         return self._port == other._port and self._ipaddr == other._ipaddr
 
     @property
+    def display(self):
+        return '%s:%s' % (tostr(self._hostname), self._port)
+
+    @property
     def family(self):
         return self._ipaddr.family
 
