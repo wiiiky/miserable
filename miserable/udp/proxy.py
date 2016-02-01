@@ -60,7 +60,6 @@ class UDPProxy(object):
             raise ProgrammingError('illegal status of UDPProxy')
         self._loop = loop
         self._loop.add(self._socket, POLL_IN | POLL_ERR, self)
-        # self._loop.add_periodic(self.handle_periodic)
 
     def handle_event(self, sock, fd, event):
         data, addr = sock.recvfrom(1 << 16)
@@ -68,4 +67,4 @@ class UDPProxy(object):
             data)
         transfer = self._find_transfer(
             Address(addr[0], addr[1]), Address(server_addr, server_port))
-        transfer.write(data)
+        transfer.write(data[3:])

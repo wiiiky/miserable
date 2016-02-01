@@ -32,7 +32,6 @@ class LocalTransfer(object):
         cfg = LocalConfigManager.get_config()
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.SOL_UDP)
-        sock.setblocking(False)
         self._socket = sock
         self._loop = loop
         self._caddr = caddr
@@ -64,10 +63,10 @@ class LocalTransfer(object):
         if not data:
             self.stop(warning='udp %s invalid data' % self.display_name)
             return
-        self._socket.sendto(data, (self._caddr.compressed, self._caddr.port))
+        self._socket.sendto(b'\x00\x00\x00' + data,
+                            (self._caddr.compressed, self._caddr.port))
 
     def write(self, data):
-        print('write', self._password, self._method, data)
         data = encrypt_all(self._password, self._method, 1, data)
         if self._raddr.ipaddr:
             self._send(data)
@@ -77,7 +76,6 @@ class LocalTransfer(object):
                 self._raddr.hostname, self._dns_resolved)
 
     def _send(self, data):
-        print('send', encrypt_all(self._password, self._method, 0, data))
         self._socket.sendto(data, (self._raddr.compressed, self._raddr.port))
 
     def _dns_resolved(self, result, error):
