@@ -20,6 +20,7 @@ from __future__ import absolute_import, division, print_function, \
 
 import socket
 import time
+from miserable.log import *
 from miserable.eventloop import *
 from miserable.exception import *
 from miserable.utils import Address
@@ -65,6 +66,8 @@ class UDPProxy(object):
         self._loop.add_periodic(self.handle_periodic)
 
     def handle_periodic(self):
+        if self.closed:
+            return
         self._check_timeout()
 
     def _check_timeout(self):
@@ -86,3 +89,16 @@ class UDPProxy(object):
         transfer = self._find_transfer(
             Address(addr[0], addr[1]), Address(server_addr, server_port))
         transfer.write(data[3:])
+
+    @property
+    def closed(self):
+        return self._socket is None
+
+    def close(self):
+        if self.closed:
+            return
+        INFO('close UDP %s' % self._laddr.display)
+        self._loop.remove_periodic(self.handle_periodic)
+        self._loop.remove(self._socket)
+        self._socket.close()
+        self._socket = None

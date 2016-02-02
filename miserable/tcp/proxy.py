@@ -50,15 +50,14 @@ class TCPProxy(object):
         sock.listen(1024)
 
         self._dns_resolver = dns_resolver
-        self._local_address = laddr
+        self._laddr = laddr
         self._socket = sock
         self._loop = None
-        self._closed = False
         self._timeout = cfg['timeout']
         self._transfers = []
 
     def add_to_loop(self, loop):
-        if self._loop or self._closed:
+        if self._loop or self.closed:
             raise ProgrammingError('illegal status of TCPProxy')
         self._loop = loop
         self._loop.add(self._socket, POLL_IN | POLL_ERR, self)
@@ -80,8 +79,8 @@ class TCPProxy(object):
         self._transfers.append(transfer)
 
     def handle_periodic(self):
-        if self._closed:
-            self._close()
+        if self.closed:
+            return
         self._check_timeout()
 
     def _check_timeout(self):
@@ -99,17 +98,15 @@ class TCPProxy(object):
                 transfers.append(t)
         self._transfers = transfers
 
-    def close(self, next_tick=False):
-        self._closed = True
-        if not next_tick:
-            self._close()
+    @property
+    def closed(self):
+        return self._socket is None
 
-    def _close(self):
-        if self._socket is None:
+    def close(self):
+        if self.closed:
             return
-        INFO('close TCP %s:%s' %
-             (self._local_address.ipaddr, self._local_address.port))
+        INFO('close TCP %s' % self._laddr.display)
+        self._loop.remove_periodic(self.handle_periodic)
         self._loop.remove(self._socket)
         self._socket.close()
         self._socket = None
-        self._loop.stop()

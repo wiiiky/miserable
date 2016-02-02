@@ -63,7 +63,9 @@ def main():
 
         def sigint_handler(signum, _):
             DEBUG('received SIGINT, doing graceful shutting down..')
-            tcp_proxy.close(next_tick=True)
+            tcp_proxy.close()
+            udp_proxy.close()
+            loop.stop()
         signal.signal(signal.SIGINT, sigint_handler)
 
         loop.run()

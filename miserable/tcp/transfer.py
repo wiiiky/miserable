@@ -96,7 +96,7 @@ class LocalTransfer(object):
         elif sock == self._remote.socket:
             if event & POLL_ERR:
                 self.stop(warning='remote %s:%s error' %
-                          (self._client.ipaddr, self._client.port))
+                          (self._remote.ipaddr, self._remote.port))
                 return
             self._handle_remote(event)
 
