@@ -1,6 +1,6 @@
 # encoding=utf8
 #
-# Copyright 2015 Wiky L
+# Copyright 2015-2016 Wiky L
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may obtain
@@ -17,19 +17,16 @@
 from __future__ import absolute_import, division, print_function, \
     with_statement
 
+
 import unittest
-from miserable.dns.utils import *
+from miserable.loop import MainLoop
 
 
-class HostnameTestCase(unittest.TestCase):
+class MainLoopTestCase(unittest.TestCase):
 
-    def test_hostname(self):
-        addr = Address('www.baidu.com', 80)
-        self.assertTrue(addr.ipaddr is None)
-        self.assertEqual(addr.port, 80)
-        self.assertEqual(addr.hostname, 'www.baidu.com')
-        addr.ipaddr = ip_address('127.0.0.1')
-        self.assertTrue(addr.ipaddr is not None)
+    def test_main_loop(self):
+        pass
+
 
 if __name__ == '__main__':
     unittest.main()
