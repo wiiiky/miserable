@@ -19,13 +19,28 @@ from __future__ import absolute_import, division, print_function, \
 
 
 import unittest
+import socket
 from miserable.loop import MainLoop
 
 
 class MainLoopTestCase(unittest.TestCase):
 
     def test_main_loop(self):
-        pass
+        self.loop = MainLoop()
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.SOL_TCP)
+        s.bind(('127.0.0.1', 27132))
+        s.setblocking(False)
+        self.loop.register(s, MainLoop.EVENT_READ, self._accept)
+        self.loop.add_timeout(self._timeout, 1000)
+        self.loop.run()
+
+    def _timeout(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.SOL_TCP)
+        s.connect(('127.0.0.1', 27132))
+
+    def _accept(self, fileobj, events):
+        self.loop.stop()
+        self.assertEqual(events, MainLoop.EVENT_READ)
 
 
 if __name__ == '__main__':

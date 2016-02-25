@@ -24,22 +24,26 @@ import time
 
 class MainLoop(object):
 
+    EVENT_READ = selectors.EVENT_READ
+    EVENT_WRITE = selectors.EVENT_WRITE
+    EVENT_ERROR  = (1 << 2)
+
     def __init__(self):
         self._selector = selectors.DefaultSelector()
         self._files = set()
         self._timeouts = {}
         self._running = False
 
-    def register(self, fileobj, events, func=None):
-        self._selector.register(fileobj, events, data)
+    def register(self, fileobj, events, func):
+        self._selector.register(fileobj, events, func)
         self._files.add(fileobj)
 
     def unregister(self, fileobj):
         self._selector.unregister(fileobj)
         self._files.remove(fileobj)
 
-    def modify(self, fileobj, events, func=None):
-        self._selector.modify(fileobj, events, data)
+    def modify(self, fileobj, events, func):
+        self._selector.modify(fileobj, events, func)
 
     def add_timeout(self, func, timeout):
         self._timeouts[func] = {
@@ -66,7 +70,7 @@ class MainLoop(object):
             events = self._selector.select(timeout=timeout)
             for key, mask in events:
                 func = key.data
-                func(key.fileobj, mask)
+                func(key.fileobj, mask or self.EVENT_ERROR)
             now = time.time()
             for func, data in self._timeouts.items():
                 if now - data['updated_at'] > data['timeout']:
