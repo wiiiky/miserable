@@ -24,8 +24,8 @@ import struct
 from miserable.log import *
 from miserable.utils import *
 from miserable.exception import *
-from miserable.eventloop import *
 from miserable.protocol import *
+from miserable.loop import MainLoop
 from miserable.encrypt import Encryptor
 
 from miserable.tcp.client import ClientState, Client
@@ -83,18 +83,18 @@ class LocalTransfer(object):
         return '%s <==> %s' % (client, server)
 
     def start(self):
-        self._client.start(POLL_IN | POLL_ERR, self)
+        self._client.start(MainLoop.EVENT_READ, self.handle_event)
 
-    def handle_event(self, sock, fd, event):
+    def handle_event(self, sock, event):
         self._last_active = time.time()
         if sock == self._client.socket:
-            if event & POLL_ERR:
+            if event & MainLoop.EVENT_ERROR:
                 self.stop(warning='client %s:%s error' %
                           (self._client.ipaddr, self._client.port))
                 return
             self._handle_client(event)
         elif sock == self._remote.socket:
-            if event & POLL_ERR:
+            if event & MainLoop.EVENT_ERROR:
                 self.stop(warning='remote %s:%s error' %
                           (self._remote.ipaddr, self._remote.port))
                 return
@@ -104,7 +104,7 @@ class LocalTransfer(object):
     def _handle_client(self, event):
         """handle the client events"""
         data = None
-        if event & POLL_IN:
+        if event & MainLoop.EVENT_READ:
             data = self._client.read()
             if data == b'':
                 self.stop(info='%s closed by client' % self.display_name)
@@ -162,21 +162,21 @@ class LocalTransfer(object):
                                            self._dns_resolved)
         elif data and self._remote:
             self._remote.write(data)
-        if event & POLL_OUT:
+        if event & MainLoop.EVENT_WRITE:
             """some data unsent"""
             self._client.write()
 
     @stop_transfer_if_fail
     def _handle_remote(self, event):
         """handle remote events"""
-        if event & POLL_IN:
+        if event & MainLoop.EVENT_READ:
             data = self._remote.read()
             if data == b'':
                 self.stop(info='%s closed by remote' % self.display_name)
                 return
             self._client.write(data)
 
-        if event & POLL_OUT:
+        if event & MainLoop.EVENT_WRITE:
             self._remote.write()
             self._client.state = ClientState.CONNECTED
 
@@ -198,7 +198,8 @@ class LocalTransfer(object):
         self._remote.socket = socket.socket(ipaddr.family, socket.SOCK_STREAM,
                                             socket.SOL_TCP)
         self._remote.connect((ipaddr.compressed, port))
-        self._remote.start(POLL_ERR | POLL_OUT | POLL_IN, self)
+        self._remote.start(MainLoop.EVENT_READ | MainLoop.EVENT_WRITE,
+                           self.handle_event)
 
     def stop(self, info=None, warning=None):
         """stop transfer"""

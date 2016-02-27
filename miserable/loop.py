@@ -26,7 +26,7 @@ class MainLoop(object):
 
     EVENT_READ = selectors.EVENT_READ
     EVENT_WRITE = selectors.EVENT_WRITE
-    EVENT_ERROR  = (1 << 2)
+    EVENT_ERROR = EVENT_WRITE << 1
 
     def __init__(self):
         self._selector = selectors.DefaultSelector()
@@ -45,7 +45,7 @@ class MainLoop(object):
     def modify(self, fileobj, events, func):
         self._selector.modify(fileobj, events, func)
 
-    def add_timeout(self, func, timeout):
+    def add_timeout(self, func, timeout=5):
         self._timeouts[func] = {
             'timeout': int(timeout),
             'updated_at': time.time()
@@ -72,7 +72,7 @@ class MainLoop(object):
                 func = key.data
                 func(key.fileobj, mask or self.EVENT_ERROR)
             now = time.time()
-            for func, data in self._timeouts.items():
+            for func, data in list(self._timeouts.items()):
                 if now - data['updated_at'] > data['timeout']:
                     data['updated_at'] = now
                     if not func():

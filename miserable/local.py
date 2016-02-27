@@ -30,6 +30,7 @@ try:
     from miserable.tcp.proxy import TCPProxy
     from miserable.udp.proxy import UDPProxy
     from miserable.config import LocalConfigManager
+    from miserable.loop import MainLoop
     from miserable.log import *
 except ImportError as e:
     sys.path.append(os.path.curdir)
@@ -39,6 +40,7 @@ except ImportError as e:
     from miserable.tcp.proxy import TCPProxy
     from miserable.udp.proxy import UDPProxy
     from miserable.config import LocalConfigManager
+    from miserable.loop import MainLoop
     from miserable.log import *
 
 
@@ -52,19 +54,16 @@ def main():
         INFO('starting local at %s:%d' %
              (cfg['local_address'].ipaddr, cfg['local_address'].port))
 
-        dns_resolver = DNSResolver()
-        tcp_proxy = TCPProxy(dns_resolver)
-        udp_proxy = UDPProxy(dns_resolver)
+        loop = MainLoop()
 
-        loop = eventloop.EventLoop()
-        dns_resolver.add_to_loop(loop)
-        tcp_proxy.add_to_loop(loop)
-        udp_proxy.add_to_loop(loop)
+        dns_resolver = DNSResolver(loop)
+        tcp_proxy = TCPProxy(dns_resolver, loop)
+        #udp_proxy = UDPProxy(dns_resolver, loop)
 
         def sigint_handler(signum, _):
             DEBUG('received SIGINT, doing graceful shutting down..')
             tcp_proxy.close()
-            udp_proxy.close()
+            #udp_proxy.close()
             loop.stop()
         signal.signal(signal.SIGINT, sigint_handler)
 

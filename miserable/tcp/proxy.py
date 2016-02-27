@@ -23,7 +23,7 @@ import socket
 from miserable.log import *
 from miserable.utils import *
 from miserable.exception import *
-from miserable.eventloop import *
+from miserable.loop import MainLoop
 
 from miserable.tcp.transfer import LocalTransfer
 from miserable.config import LocalConfigManager
@@ -32,7 +32,7 @@ from miserable.config import LocalConfigManager
 class TCPProxy(object):
     """Shadowsocks TCP proxy"""
 
-    def __init__(self, dns_resolver):
+    def __init__(self, dns_resolver, loop):
         cfg = LocalConfigManager.get_config()
         laddr = cfg['local_address']
 
@@ -52,20 +52,20 @@ class TCPProxy(object):
         self._dns_resolver = dns_resolver
         self._laddr = laddr
         self._socket = sock
-        self._loop = None
+        self._loop = loop
         self._timeout = cfg['timeout']
         self._transfers = []
 
-    def add_to_loop(self, loop):
-        if self._loop or self.closed:
-            raise ProgrammingError('illegal status of TCPProxy')
-        self._loop = loop
-        self._loop.add(self._socket, POLL_IN | POLL_ERR, self)
-        self._loop.add_periodic(self.handle_periodic)
+        self._register_to_loop()
 
-    def handle_event(self, sock, fd, event):
+    def _register_to_loop(self):
+        self._loop.register(self._socket, MainLoop.EVENT_READ,
+                            self.handle_event)
+        self._loop.add_timeout(self._handle_timeout, 5)
+
+    def handle_event(self, sock, event):
         # handle events and dispatch to handlers
-        if event & POLL_ERR:
+        if event & MainLoop.EVENT_ERROR:
             raise UnexpectedEventError('local server error!!!')
         self._accept()
 
@@ -78,7 +78,7 @@ class TCPProxy(object):
         transfer.start()
         self._transfers.append(transfer)
 
-    def handle_periodic(self):
+    def _handle_timeout(self):
         if self.closed:
             return
         self._check_timeout()
@@ -106,7 +106,7 @@ class TCPProxy(object):
         if self.closed:
             return
         INFO('close TCP %s' % self._laddr.display)
-        self._loop.remove_periodic(self.handle_periodic)
-        self._loop.remove(self._socket)
+        self._loop.remove_timeout(self._handle_timeout)
+        self._loop.unregister(self._socket)
         self._socket.close()
         self._socket = None

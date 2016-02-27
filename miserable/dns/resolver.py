@@ -21,12 +21,12 @@ from __future__ import absolute_import, division, print_function, \
 import os
 import socket
 
-from miserable import eventloop
-from miserable.log import *
+from miserable.loop import MainLoop
 from miserable.cache import LRUCache
 from miserable.dns.protocol import *
 from miserable.dns.utils import *
 from miserable.utils import *
+from miserable.log import *
 
 
 CACHE_SWEEP_INTERVAL = 30
@@ -126,8 +126,8 @@ class Socket(socket.socket):
 
 class DNSResolver(object):
 
-    def __init__(self):
-        self._loop = None
+    def __init__(self, loop):
+        self._loop = loop
         self._hosts = load_hosts_conf()
         self._servers = load_resolv_conf()
         self._callbacks = {}
@@ -135,19 +135,13 @@ class DNSResolver(object):
         self._sock = None
         # TODO monitor hosts change and reload hosts
         # TODO parse /etc/gai.conf and follow its rules
+        self._register_to_loop()
 
-    def _refresh(self):
-        # create or refresh DNS socket
+    def _register_to_loop(self):
         self._sock = Socket(self._servers)
         self._sock.setblocking(False)
-        self._loop.add(self._sock, eventloop.POLL_IN, self)
-
-    def add_to_loop(self, loop):
-        if self._loop:
-            raise Exception('already add to loop')
-        self._loop = loop
-        self._refresh()
-        loop.add_periodic(self.handle_periodic)
+        self._loop.register(self._sock, MainLoop.EVENT_READ, self.handle_event)
+        self._loop.add_timeout(self._handle_timeout)
 
     def _call_callback(self, hostname, ipaddr, error=None):
         """domain resolved, execute the callbacks"""
@@ -173,19 +167,19 @@ class DNSResolver(object):
             self._cache[response.hostname] = response.answer
         self._call_callback(response.hostname, response.answer)
 
-    def handle_event(self, sock, fd, event):
+    def handle_event(self, sock, event):
         if sock != self._sock:
             return
-        if event & eventloop.POLL_ERR:
+        if event & MainLoop.EVENT_ERROR:
             ERROR('dns socket error')
             self._loop.remove(self._sock)
             self._sock.close()
             self._refresh()
-        elif event & eventloop.POLL_IN:
+        elif event & MainLoop.EVENT_READ:
             response = sock.recv_dns_response()
             self._handle_response(response)
 
-    def handle_periodic(self):
+    def _handle_timeout(self):
         self._cache.sweep()
 
     def resolve(self, host, callback):
@@ -212,7 +206,7 @@ class DNSResolver(object):
     def close(self):
         if self._sock:
             if self._loop:
-                self._loop.remove_periodic(self.handle_periodic)
-                self._loop.remove(self._sock)
+                self._loop.remove_timeout(self._handle_timeout)
+                self._loop.unregister(self._sock)
             self._sock.close()
             self._sock = None

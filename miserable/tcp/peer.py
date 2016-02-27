@@ -18,7 +18,7 @@ from __future__ import absolute_import, division, print_function, \
     with_statement
 
 import socket
-from miserable.eventloop import *
+from miserable.loop import MainLoop
 from miserable.utils import return_val_if_wouldblock
 
 
@@ -54,9 +54,10 @@ class Peer(object):
         """shortcut for decrypt"""
         return self._encryptor.decrypt(data)
 
-    def start(self, events, manager):
-        self._loop.add(self._socket, events, manager)
+    def start(self, events, func):
+        self._loop.register(self._socket, events, func)
         self._events = events
+        self._func = func
 
     @property
     def connected(self):
@@ -103,31 +104,30 @@ class Peer(object):
             return 0
         self._write()
 
-        if self._wbuf and not (self._events & POLL_OUT):
+        if self._wbuf and not (self._events & MainLoop.EVENT_WRITE):
             """
             not all data sent,
-            monitor the POLL_OUT event so we can send them next time
+            monitor the EVENT_WRITE event so we can send them next time
             """
-            self._events |= POLL_OUT
-            self._loop.modify(self._socket, self._events)
-        elif not self._wbuf and (self._events & POLL_OUT):
+            self._events |= MainLoop.EVENT_WRITE
+            self._loop.modify(self._socket, self._events, self._func)
+        elif not self._wbuf and (self._events & MainLoop.EVENT_WRITE):
             """
-            all data sent, but POLL_OUT is monitored,
-            to avoid necessary POLL_OUT event, remove POLL_OUT.
+            all data sent, but EVENT_WRITE is monitored,
+            to avoid necessary EVENT_WRITE event, remove EVENT_WRITE.
             """
-            self._events ^= POLL_OUT
-            self._loop.modify(self._socket, self._events)
+            self._events ^= MainLoop.EVENT_WRITE
+            self._loop.modify(self._socket, self._events, self._func)
 
     @return_val_if_wouldblock(0)
     def _write(self):
         if not self._wbuf:
             return 0
-        total = len(self._wbuf)
         n = self._socket.send(self._wbuf)
         self._wbuf = self._wbuf[n:]
         return n
 
     def close(self):
         if self._socket and self._events:
-            self._loop.remove(self._socket)
+            self._loop.unregister(self._socket)
             self._socket.close()
