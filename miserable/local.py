@@ -24,7 +24,6 @@ import signal
 
 
 try:
-    from miserable import eventloop
     from miserable.daemon import MiserableDaemon
     from miserable.dns.resolver import DNSResolver
     from miserable.tcp.proxy import TCPProxy
@@ -34,7 +33,6 @@ try:
     from miserable.log import *
 except ImportError as e:
     sys.path.append(os.path.curdir)
-    from miserable import eventloop
     from miserable.daemon import MiserableDaemon
     from miserable.dns.resolver import DNSResolver
     from miserable.tcp.proxy import TCPProxy
