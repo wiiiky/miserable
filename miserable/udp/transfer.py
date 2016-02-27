@@ -22,8 +22,8 @@ import socket
 import time
 from miserable.utils import Address
 from miserable.config import LocalConfigManager
+from miserable.loop import MainLoop
 from miserable.encrypt import *
-from miserable.eventloop import *
 from miserable.log import *
 
 
@@ -60,12 +60,12 @@ class LocalTransfer(object):
     def saddr(self):
         return self._saddr
 
-    def start(self, events=POLL_IN):
-        self._loop.add(self._socket, events, self)
+    def start(self, events=MainLoop.EVENT_READ):
+        self._loop.register(self._socket, events, self.handle_event)
 
-    def handle_event(self, sock, fd, event):
+    def handle_event(self, sock, event):
         """receive package from remote, transfer to client"""
-        if event & POLL_ERR:
+        if event & MainLoop.EVENT_ERROR:
             self.stop(warning='udp %s error' % self.display_name)
             return
         self._last_active = time.time()
@@ -120,6 +120,6 @@ class LocalTransfer(object):
             INFO(info)
         elif warning:
             WARN(warning)
-        self._loop.remove(self._socket)
+        self._loop.unregister(self._socket)
         self._socket.close()
         self._socket = None

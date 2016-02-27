@@ -58,12 +58,12 @@ def main():
 
         dns_resolver = DNSResolver(loop)
         tcp_proxy = TCPProxy(dns_resolver, loop)
-        #udp_proxy = UDPProxy(dns_resolver, loop)
+        udp_proxy = UDPProxy(dns_resolver, loop)
 
         def sigint_handler(signum, _):
             DEBUG('received SIGINT, doing graceful shutting down..')
             tcp_proxy.close()
-            #udp_proxy.close()
+            udp_proxy.close()
             loop.stop()
         signal.signal(signal.SIGINT, sigint_handler)
 

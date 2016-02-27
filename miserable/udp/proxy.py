@@ -21,8 +21,8 @@ from __future__ import absolute_import, division, print_function, \
 import socket
 import time
 from miserable.log import *
-from miserable.eventloop import *
 from miserable.exception import *
+from miserable.loop import MainLoop
 from miserable.utils import Address
 from miserable.encrypt import Encryptor
 from miserable.protocol import parse_udp_request
@@ -32,7 +32,7 @@ from miserable.udp.transfer import LocalTransfer
 
 class UDPProxy(object):
 
-    def __init__(self, dns_resolver):
+    def __init__(self, dns_resolver, loop):
         cfg = LocalConfigManager.get_config()
         laddr = cfg['local_address']
 
@@ -41,13 +41,15 @@ class UDPProxy(object):
         sock.bind((laddr.compressed, laddr.port))
         sock.setblocking(False)
 
-        self._loop = None
+        self._loop = loop
         self._closed = False
         self._laddr = laddr
         self._dns_resolver = dns_resolver
         self._socket = sock
         self._timeout = cfg['timeout']
         self._transfers = set()
+
+        self._register_to_loop()
 
     def _find_transfer(self, caddr, saddr):
         for f in self._transfers:
@@ -58,14 +60,12 @@ class UDPProxy(object):
         self._transfers.add(f)
         return f
 
-    def add_to_loop(self, loop):
-        if self._loop or self._closed:
-            raise ProgrammingError('illegal status of UDPProxy')
-        self._loop = loop
-        self._loop.add(self._socket, POLL_IN | POLL_ERR, self)
-        self._loop.add_periodic(self.handle_periodic)
+    def _register_to_loop(self):
+        self._loop.register(self._socket, MainLoop.EVENT_READ,
+                            self.handle_event)
+        self._loop.add_timeout(self._handle_timeout)
 
-    def handle_periodic(self):
+    def _handle_timeout(self):
         if self.closed:
             return
         self._check_timeout()
@@ -82,7 +82,7 @@ class UDPProxy(object):
                 transfers.add(t)
         self._transfers = transfers
 
-    def handle_event(self, sock, fd, event):
+    def handle_event(self, sock, event):
         data, addr = sock.recvfrom(1 << 16)
         frag, atype, server_addr, server_port, payload = parse_udp_request(
             data)
@@ -98,7 +98,7 @@ class UDPProxy(object):
         if self.closed:
             return
         INFO('close UDP %s' % self._laddr.display)
-        self._loop.remove_periodic(self.handle_periodic)
-        self._loop.remove(self._socket)
+        self._loop.remove_timeout(self._handle_timeout)
+        self._loop.unregister(self._socket)
         self._socket.close()
         self._socket = None
