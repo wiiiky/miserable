@@ -86,6 +86,8 @@ class LocalTransfer(object):
         self._client.start(MainLoop.EVENT_READ, self.handle_event)
 
     def handle_event(self, sock, event):
+        if self.closed:
+            return
         self._last_active = time.time()
         if sock == self._client.socket:
             if event & MainLoop.EVENT_ERROR:

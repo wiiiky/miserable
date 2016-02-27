@@ -75,5 +75,5 @@ class MainLoop(object):
             for func, data in list(self._timeouts.items()):
                 if now - data['updated_at'] > data['timeout']:
                     data['updated_at'] = now
-                    if not func():
+                    if func():
                         del self._timeouts[func]

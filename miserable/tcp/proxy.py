@@ -64,7 +64,7 @@ class TCPProxy(object):
         self._loop.add_timeout(self._handle_timeout, 5)
 
     def handle_event(self, sock, event):
-        # handle events and dispatch to handlers
+        # handle events and dispatch to handler
         if event & MainLoop.EVENT_ERROR:
             raise UnexpectedEventError('local server error!!!')
         self._accept()
