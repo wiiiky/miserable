@@ -57,7 +57,6 @@ class Peer(object):
     def start(self, events, func):
         self._loop.register(self._socket, events, func)
         self._events = events
-        self._func = func
 
     @property
     def connected(self):
@@ -110,14 +109,14 @@ class Peer(object):
             monitor the EVENT_WRITE event so we can send them next time
             """
             self._events |= MainLoop.EVENT_WRITE
-            self._loop.modify(self._socket, self._events, self._func)
+            self._loop.modify(self._socket, self._events)
         elif not self._wbuf and (self._events & MainLoop.EVENT_WRITE):
             """
             all data sent, but EVENT_WRITE is monitored,
             to avoid necessary EVENT_WRITE event, remove EVENT_WRITE.
             """
             self._events ^= MainLoop.EVENT_WRITE
-            self._loop.modify(self._socket, self._events, self._func)
+            self._loop.modify(self._socket, self._events)
 
     @return_val_if_wouldblock(0)
     def _write(self):
