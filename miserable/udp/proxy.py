@@ -63,7 +63,7 @@ class UDPProxy(object):
     def _register_to_loop(self):
         self._loop.register(self._socket, MainLoop.EVENT_READ,
                             self.handle_event)
-        self._loop.add_timeout(self._handle_timeout)
+        self._loop.add_timeout(self._handle_timeout, 10)
 
     def _handle_timeout(self):
         if self.closed:

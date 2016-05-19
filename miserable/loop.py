@@ -148,7 +148,7 @@ class MainLoop(object):
                             'package')
         self._fdmap = {}  # (f, handler)
         self._last_time = time.time()
-        self._periodic_callbacks = []
+        self._timeouts = {}         # 定时任务，函数名=>超时时间的映射
         self._stopping = False
         DEBUG('using event model: %s' % model)
 
@@ -167,10 +167,14 @@ class MainLoop(object):
         self._impl.unregister(fd)
 
     def add_timeout(self, callback, timeout=5):
-        self._periodic_callbacks.append(callback)
+        self._timeouts[callback] = {
+            'total': timeout,
+            'left': timeout
+        }
 
     def remove_timeout(self, callback):
-        self._periodic_callbacks.remove(callback)
+        if callback in self._timeouts:
+            del self._timeouts[callback]
 
     def modify(self, f, mode):
         fd = f.fileno()
@@ -183,8 +187,15 @@ class MainLoop(object):
         events = []
         while not self._stopping:
             asap = False
+            timeout = -1
+            now = time.time()
+            for cb, t in self._timeouts.items():
+                if timeout < 0:
+                    timeout = t['left']
+                else:
+                    timeout = min(timeout, t['left'])
             try:
-                events = self.poll(TIMEOUT_PRECISION)
+                events = self.poll(timeout)
             except (OSError, IOError) as e:
                 if errno_from_exception(e) in (errno.EPIPE, errno.EINTR):
                     # EPIPE: Happens when the client closes the connection
@@ -202,15 +213,14 @@ class MainLoop(object):
                 handler = self._fdmap.get(fd, None)
                 if handler is not None:
                     func = handler[1]
-                    try:
-                        func(sock, event)
-                    except (OSError, IOError) as e:
-                        WARN(str(e))
-            now = time.time()
-            if asap or now - self._last_time >= TIMEOUT_PRECISION:
-                for callback in self._periodic_callbacks:
-                    callback()
-                self._last_time = now
+                    func(sock, event)
+            timeout = time.time() - now
+            for cb, t in self._timeouts.items():
+                if t['left'] - timeout < 0:
+                    cb()
+                    t['left'] = t['total']
+                else:
+                    t['left'] -= timeout
 
     def __del__(self):
         self._impl.close()
