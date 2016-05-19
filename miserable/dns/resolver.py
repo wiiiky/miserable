@@ -141,7 +141,7 @@ class DNSResolver(object):
         self._sock = Socket(self._servers)
         self._sock.setblocking(False)
         self._loop.register(self._sock, MainLoop.EVENT_READ, self.handle_event)
-        self._loop.add_timeout(self._handle_timeout)
+        self._loop.add_timeout(self._handle_timeout, 20)
 
     def _call_callback(self, hostname, ipaddr, error=None):
         """domain resolved, execute the callbacks"""
